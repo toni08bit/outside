@@ -16,7 +16,7 @@ class OutsideHTTP:
             "termination_timeout": 5,
             "recv_size": 1024,
             "send_size": 1024,
-            "accept_timeout": 0.1,
+            "accept_timeout": 0.02,
             "ssl_enabled": False,
             "ssl_keyfile": "",
             "ssl_certfile": "",
@@ -32,7 +32,9 @@ class OutsideHTTP:
         self._error_routes = {}
 
         def _create_errorhandler(error_code,error_description):
-            def _errorhandler(request,message = "No further information."):
+            def _errorhandler(request,message = None):
+                if (message == None):
+                    message = "No further information."
                 return protocol_http.Response(
                     request = request,
                     status_code = error_code,
