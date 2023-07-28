@@ -92,7 +92,7 @@ def process_request(connected_socket,address,config,route_names,routes,error_rou
                 terminate()
 
         split_preline = header_lines[0].decode("utf-8").split(" ")
-        request_class.method = split_preline[0]
+        request_class.method = split_preline[0].upper()
         request_class.url = split_preline[1]
         request_class.version = split_preline[2]
 
