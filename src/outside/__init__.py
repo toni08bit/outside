@@ -2,6 +2,7 @@ import time
 import socket
 import signal
 import multiprocessing
+import queue
 
 import outside.protocol_http as protocol_http
 import outside.code_description as code_description
@@ -10,18 +11,23 @@ import outside.code_description as code_description
 class OutsideHTTP:
     def __init__(self,host):
         self.config = {
-            "host": ("0.0.0.0",80),
-            "backlog_length": 25,
-            "process_timeout": 60,
-            "termination_timeout": 5,
-            "recv_size": 1024,
-            "send_size": 1024,
-            "accept_timeout": 0.02,
-            "ssl_enabled": False,
-            "ssl_keyfile": "",
-            "ssl_certfile": "",
-            "max_body_size_mb": 250,
-            "keep_alive": True
+            "host": ("0.0.0.0",80), # The Host (IP,Port)
+            "backlog_length": 25, # Amount of parallel connections allowed (active or inactive)
+            "process_timeout": 60, # Time until a process with no send/recv activity gets terminated
+            "termination_timeout": 5, # Time until a process which is being terminated is getting killed
+            "recv_size": 1024, # Receiving packet size
+            "send_size": 1024, # Sending packet size
+            "keep_alive": True, # Allow more requests after one request is finished over the same socket
+            "ssl_enabled": False, # Enable/Disable SSL
+            "ssl_keyfile": "", # SSL Private Key File, e.g.: "/etc/letsencrypt/live/billplayz.de/privkey.pem"
+            "ssl_certfile": "", # SSL Public Certificate, e.g.: "/etc/letsencrypt/live/billplayz.de/cert.pem"
+            "accept_timeout": 0.02, # Interval between checking for new clients
+            "max_body_size_mb": 250, # Max. upload (from client) body size
+            "allow_range_from_mb": 50, # Request browser to split the request into multiple from x+ MB response size ("FilePath" response only)
+            "big_definition_mb": 50, # x MB is considered as "big" and response gets sent with higher transmission speed (increses latency)
+            "big_send_limit_mb": 100, # x MB is the max. packet send size for "big" responses
+            "post_callback": None, # Call this function with the request and response data for e.g. statistics
+            "pre_send": None # Modify the final response before sending
         }
         self.config["host"] = host
 
@@ -73,7 +79,7 @@ class OutsideHTTP:
         self._main_socket.close()
         self._terminate_process = True
 
-        for running_process in self._active_requests:
+        for running_process,activity_queue in self._active_requests:
             if (self._check_process(running_process)):
                 running_process.terminate()
                 print(f"[MAIN - INFO] Waiting on {running_process._socket_address[0]} to terminate in final steps.")
@@ -109,34 +115,45 @@ class OutsideHTTP:
                 print(f"[MAIN - INFO] Connected to {address[0]}")
             except socket.timeout:
                 current_time = time.time()
-                for running_process in self._active_requests:
+                for running_process,activity_queue in self._active_requests:
                     if (not self._check_process(running_process)):
                         print(f"[MAIN - INFO] Removing {running_process._socket_address[0]}. (Process exited)")
-                        self._active_requests.remove(running_process)
+                        self._active_requests.remove((running_process,activity_queue))
                         continue
-                    if ((current_time - running_process._started_at) >= self.config["process_timeout"]):
+                    self._check_process_activity(running_process,activity_queue)
+                    if ((current_time - running_process._last_activity) >= self.config["process_timeout"]):
                         if (hasattr(running_process,"_terminating_at")):
                             if ((current_time - running_process._terminating_at) >= self.config["termination_timeout"]):
                                 print(f"[MAIN - ERROR] Killing {running_process._socket_address[0]}. (Did not terminate!)")
                                 running_process.kill()
-                                self._active_requests.remove(running_process)
+                                self._active_requests.remove((running_process,activity_queue))
                         else:
-                            print(f"[MAIN - WARN] Terminating {address[0]}.")
+                            print(f"[MAIN - INFO] Terminating {address[0]}. (No further activity!)")
                             running_process.terminate()
                             running_process._terminating_at = current_time
             except OSError:
                 continue
             else:
+                new_queue = multiprocessing.Queue()
                 new_process = multiprocessing.Process(
                     target = protocol_http.process_request,
                     name = f"(outside subprocess) HTTP Request from {address[0]}:{address[1]}",
                     daemon = True,
-                    args = [accepted_socket,address,self.config,self._route_names,self._routes,self._error_routes]
+                    args = [new_queue,accepted_socket,address,self.config,self._route_names,self._routes,self._error_routes]
                 )
                 new_process.start()
-                new_process._started_at = time.time()
+                new_process._last_activity = time.time()
                 new_process._socket_address = address
-                self._active_requests.append(new_process)
+                self._active_requests.append((new_process,new_queue))
 
     def _check_process(self,process):
         return (process.exitcode == None)
+    
+    def _check_process_activity(self,process,activity_queue):
+        while True:
+            try:
+                queue_item = activity_queue.get(block = False)
+            except queue.Empty:
+                return
+            if (process._last_activity < queue_item):
+                process._last_activity = queue_item

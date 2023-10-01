@@ -1,17 +1,21 @@
 import json
 import traceback
 import sys
+import os.path
+import re
 import mimetypes
 import time
 import http.cookies
+import urllib.parse
 import socket
 import signal
 import ssl
 
 import outside.code_description
 
-def process_request(connected_socket,address,config,route_names,routes,error_routes,is_reused = False):
+def process_request(activity_queue,connected_socket,address,config,route_names,routes,error_routes,is_reused = False):
     start_time = time.time()
+    debug_name = f"{address[0]}:{str(address[1])}"
 
     def close_socket(unknown_socket):
         try:
@@ -33,15 +37,32 @@ def process_request(connected_socket,address,config,route_names,routes,error_rou
             return connected_ssl_socket.recv(recv_size)
         else:
             return connected_socket.recv(recv_size)
-        
-    def send(data):
+
+    def send(data,append_file = None):
+        send_size = config["send_size"]
+        data_length = len(data)
+        if (append_file):
+            data_length = (data_length + (append_file.read_end - append_file.read_start))
+        if (data_length > (config["big_definition_mb"] * 1024 * 1024)):
+            send_size = (config["big_send_limit_mb"] * 1024 * 1024)
         send_socket = connected_socket
         if (config["ssl_enabled"]):
             send_socket = connected_ssl_socket
 
         while (len(data) > 0):
-            send_socket.send(data[:config["send_size"]])
-            data = data[config["send_size"]:]
+            send_socket.send(data[:send_size])
+            data = data[send_size:]
+            activity_queue.put(time.time())
+
+        if (append_file):
+            open_file = open(append_file.path,"rb")
+            open_file.seek(append_file.read_start)
+            while (True):
+                limited_read = min((append_file.read_end - open_file.tell()),send_size)
+                current_chunk = open_file.read(limited_read)
+                if (limited_read <= 0):
+                    break
+                send_socket.send(current_chunk)
 
     try:
         signal.signal(signal.SIGINT,terminate)
@@ -67,7 +88,7 @@ def process_request(connected_socket,address,config,route_names,routes,error_rou
         # Begin Request Flow
         request_class = Request("NONE",{},b"","HTTP/-1","/",address)
         # Receive Request Info + Headers
-        print(f"[{address[0]} - INFO] Waiting for request info.")
+        print(f"[{debug_name} - INFO] Waiting for request info.")
         header_lines = [b""]
         while True:
             try:
@@ -88,31 +109,37 @@ def process_request(connected_socket,address,config,route_names,routes,error_rou
                 if (len(header_split) > 1):
                     break
             except BrokenPipeError:
-                print(f"[{address[0]} - WARN] Pipe broken, releasing process.")
+                print(f"[{debug_name} - WARN] Pipe broken, releasing process.")
                 terminate()
 
         split_preline = header_lines[0].decode("utf-8").split(" ")
+        split_url = split_preline[1].split("?")
         request_class.method = split_preline[0].upper()
-        request_class.url = split_preline[1]
+        request_class.url = split_url[0]
+        if (len(split_url) > 1):
+            for param_name,param_values in urllib.parse.parse_qs(split_url[1]).items():
+                request_class.params[param_name] = param_values[0]
         request_class.version = split_preline[2]
 
         for header_line in header_lines[1:]:
             split_line = header_line.decode("utf-8").split(": ")
             request_class.headers[split_line[0]] = split_line[1]
 
+        print(f"[{debug_name} - INFO] Flow: {request_class.headers.get('Host') or ''}{request_class.url}")
+
         # Receive Body
         if (request_class.headers.get("Content-Length")):
             request_class.headers["Content-Length"] = int(request_class.headers["Content-Length"])
             if (not request_class.content):
                 request_class.content = b""
-            print(f"[{address[0]} - INFO] Receiving content.")
+            print(f"[{debug_name} - INFO] Receiving content.")
             if (request_class.headers["Content-Length"] > (config["max_body_size_mb"] * 1024 * 1024)):
-                print(f"[{address[0]} - WARN] Content-Length is too high, releasing process.")
+                print(f"[{debug_name} - WARN] Content-Length is too high, releasing process.")
                 terminate()
             while (len(request_class.content) < request_class.headers["Content-Length"]):
                 recv_data = recv(min((request_class.headers["Content-Length"] - len(request_class.content)),config["recv_size"]))
                 request_class.content = (request_class.content + recv_data)
-            print(f"[{address[0]} - INFO] Received {str(len(request_class.content))}B content.")
+            print(f"[{debug_name} - INFO] Received {str(len(request_class.content))}B content.")
 
         # Check Route
         responding_route = None
@@ -124,12 +151,51 @@ def process_request(connected_socket,address,config,route_names,routes,error_rou
             responding_route = error_routes[404]
 
         # Respond
+        print(f"[{debug_name} - INFO] Generating response.")
         request_class._extract_cookies()
         scheduled_response_class = ScheduledResponse(request_class,responding_route,error_routes)
         response_class = scheduled_response_class.run()
         if (not response_class):
-            print(f"[{address[0]} - WARN] ScheduledResponse did not return Response, releasing process.")
+            print(f"[{debug_name} - WARN] ScheduledResponse did not return Response, releasing process.")
             terminate()
+
+        content_is_file = isinstance(response_class.content,FilePath)
+
+        if (content_is_file):
+            content_length = os.path.getsize(response_class.content.path)
+            if ((config["allow_range_from_mb"] != -1) and (config["allow_range_from_mb"] < (content_length / 1024 / 1024))):
+                response_class.headers["Accept-Ranges"] = "bytes"
+                if (request_class.headers.get("Range")):
+                    response_class.status_code = 206
+                    if (("," in request_class.headers["Range"]) or (not re.match(r"^bytes=(?:([0-9]+)-|-(?:[0-9]+|([0-9]+)-[0-9]+))$",request_class.headers["Range"]))):
+                        response_class = Response(request_class,416,{},"bytes=<range-start>-<range-end>")
+                    else:
+                        range_split = request_class.headers["Range"][6:].split("-")
+                        if (range_split[0] == ""):
+                            range_end = min(int(range_split[1]),(content_length - 1))
+                            response_class.headers["Content-Range"] = f"bytes {str(content_length - range_end)}-{str(content_length - 1)}/{str(content_length)}"
+                            response_class.content.read_end = min(content_length,(content_length - range_end))
+                        elif (range_split[1] == ""):
+                            range_start = max(int(range_split[0]),0)
+                            response_class.headers["Content-Range"] = f"bytes {str(range_start)}-{str(content_length - 1)}/{str(content_length)}"
+                            response_class.content.read_start = max(0,range_start)
+                        else:
+                            range_start = min(int(range_split[1]),(content_length - 1))
+                            range_end = max(int(range_split[0]),0)
+                            response_class.headers["Content-Range"] = f"bytes {str(range_start)}-{str(range_end)}/{str(content_length)}"
+                            response_class.content.read_start = max(0,range_start)
+                            response_class.content.read_end = min(content_length,range_end)
+                        print(f"[{debug_name} - INFO] Chunked file response: {response_class.headers['Content-Range'][6:]}")
+        
+        if (config["pre_send"]):
+            print(f"[{debug_name} - INFO] Running pre_send.")
+            config["pre_send"](response_class)
+        
+        content_is_file = isinstance(response_class.content,FilePath)
+        if (content_is_file):
+            response_class.headers["Content-Length"] = (response_class.content.read_end - response_class.content.read_start)
+        else:
+            response_class.headers["Content-Length"] = len(response_class.content)
         
         socket_keep_alive = False
         if ((config["keep_alive"]) and (request_class.headers.get("Connection") == "keep-alive")):
@@ -147,7 +213,7 @@ def process_request(connected_socket,address,config,route_names,routes,error_rou
             response_data = (response_data + header_name.encode("utf-8") + b": " + header_value.encode("utf-8") + b"\n")
 
         if (response_class.headers.get("Set-Cookie")):
-            print(f"[{address[0]} - ERROR] Set-Cookie header was returned by ScheduledResponse, use add_cookie instead.")
+            print(f"[{debug_name} - ERROR] Set-Cookie header was returned by ScheduledResponse, use add_cookie instead.")
             terminate()
         for cookie_name,cookie_value in response_class.cookies.items():
             response_data = (response_data + b"Set-Cookie: " + cookie_name.encode("utf-8") + b"=" + cookie_value.value.encode("utf-8"))
@@ -165,21 +231,27 @@ def process_request(connected_socket,address,config,route_names,routes,error_rou
                 response_data = (response_data + f"; SameSite={cookie_value.same_site}".encode("utf-8"))
             response_data = (response_data + b"\n")
 
-        response_data = (response_data + b"\n" + response_class.content)
+        print(f"[{debug_name} - INFO] Sending response.")
+        if (content_is_file):
+            response_data = (response_data + b"\n")
+            send(response_data,response_class.content)
+        else:
+            response_data = (response_data + b"\n" + response_class.content)
+            send(response_data)
 
-        print(f"[{address[0]} - INFO] Sending response.")
-        send(response_data)
-        print(f"[{address[0]} - INFO] Code {str(response_class.status_code)} in {str((time.time() - start_time) / 1000)}ms.")
+        print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str((time.time() - start_time) / 1000)}ms.")
+        if (config["post_callback"]):
+            config["post_callback"](request_class,response_class)
         if (socket_keep_alive):
-            print(f"[{address[0]} - INFO] Waiting for further requests.")
+            print(f"[{debug_name} - INFO] Waiting for further requests.")
             reuse_socket = connected_socket
             if (config["ssl_enabled"]):
                 reuse_socket = connected_ssl_socket
-            process_request(reuse_socket,address,config,route_names,routes,error_routes,True)
+            process_request(activity_queue,reuse_socket,address,config,route_names,routes,error_routes,True)
         terminate()
 
     except Exception as exception:
-        print(f"[{address[0]} - ERROR] Unexpected exception:")
+        print(f"[{debug_name} - ERROR] Unexpected exception:")
         traceback.print_exc()
         close_socket(connected_socket)
         sys.exit(1)
@@ -232,7 +304,7 @@ class ScheduledResponse:
         generated_response = None
         try:
             generated_response = self.route_function(self.request)
-            if (type(generated_response) != Response):
+            if (type(generated_response) not in [Response,type(None)]):
                 generated_response = self.error_routes[generated_response[0]](self.request,generated_response[1])
         except Exception as exception:
             print(f"[{self.request.address[0]} - ERROR] Unexpected server error:")
@@ -251,22 +323,19 @@ class ScheduledResponse:
                 generated_response.headers["Content-Type"] = "text/plain"
                 generated_response.content = generated_response.content.encode("utf-8")
             elif (isinstance(generated_response.content,FilePath)):
-                generated_response.headers["Content-Type"] = mimetypes.guess_type(generated_response.content.path)
-                generated_response.content = generated_response.content.read()
+                generated_response.headers["Content-Type"] = (mimetypes.guess_type(generated_response.content.path,False)[0] or "text/plain")
+                #generated_response.content = generated_response.content.read()
             elif (isinstance(generated_response.content,dict)):
                 generated_response.headers["Content-Type"] = "application/json"
                 generated_response.content = json.dumps(generated_response.content).encode("utf-8")
             elif (isinstance(generated_response.content,bytes)):
                 generated_response.headers["Content-Type"] = "text/plain"
             else:
-                print(f"[{self.request.address[0]} - ERROR] Return type invalid.")
-                return None
-        else:
-            print(f"[{self.request.address[0]} - ERROR] Response content type is not supported.")
-            raise NotImplementedError
+                print(f"[{self.request.address[0]} - ERROR] Response content type ({type(generated_response.content).__name__}) is not supported.")
+                raise NotImplementedError
+        elif (not isinstance(generated_response.content,bytes)):
+            generated_response.content = generated_response.content.encode("utf-8")
 
-        generated_response.headers["Content-Length"] = len(generated_response.content)
-                    
         return generated_response
 
 class Websocket:
@@ -276,12 +345,18 @@ class Websocket:
 class FilePath:
     def __init__(self,path):
         self.path = path
+        self.read_start = 0
+        self.read_end = os.path.getsize(self.path)
         self._content = None
 
-    def read(self,twice = False):
+    def read(self,read_range = None,twice = False):
         if (twice or (not self._content)):
             open_file = open(self.path,"rb")
-            self._content = open_file.read()
+            if (read_range):
+                open_file.seek(read_range[0])
+                self._content = open_file.read(read_range[1] - read_range[0])
+            else:
+                self._content = open_file.read()
             open_file.close()
         return self._content
     
