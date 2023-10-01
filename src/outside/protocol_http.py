@@ -250,9 +250,17 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             process_request(activity_queue,reuse_socket,address,config,route_names,routes,error_routes,True)
         terminate()
 
+    except BrokenPipeError as exception:
+        print(f"[{debug_name} - ERROR] Connection interrupted.")
+
+    except ssl.SSLError as exception:
+        print(f"[{debug_name} - ERROR] SSL Exception: {str(exception)}")
+
     except Exception as exception:
         print(f"[{debug_name} - ERROR] Unexpected exception:")
         traceback.print_exc()
+
+    finally:
         close_socket(connected_socket)
         sys.exit(1)
 
