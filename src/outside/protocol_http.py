@@ -91,26 +91,22 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
         print(f"[{debug_name} - INFO] Waiting for request info.")
         header_lines = [b""]
         while True:
-            try:
-                recv_data = recv()
-                if (len(recv_data) == 0):
-                    raise BrokenPipeError
-                recv_data = recv_data.replace(b"\r",b"")
-                header_split = recv_data.split(b"\n\n")
-                if (len(header_split) > 1):
-                    request_class.content = recv_data[(len(header_split[0]) + 2):]
-                    recv_data = header_split[0]
-                recv_data = recv_data.split(b"\n")
-                header_lines[len(header_lines) - 1] = (header_lines[len(header_lines) - 1] + recv_data[0])
-                header_lines = (header_lines + recv_data[1:])
-                if (header_lines[len(header_lines) - 1] == b""):
-                    header_lines = header_lines[:-2]
-                    break
-                if (len(header_split) > 1):
-                    break
-            except BrokenPipeError:
-                print(f"[{debug_name} - WARN] Pipe broken, releasing process.")
-                terminate()
+            recv_data = recv()
+            if (len(recv_data) == 0):
+                raise BrokenPipeError
+            recv_data = recv_data.replace(b"\r",b"")
+            header_split = recv_data.split(b"\n\n")
+            if (len(header_split) > 1):
+                request_class.content = recv_data[(len(header_split[0]) + 2):]
+                recv_data = header_split[0]
+            recv_data = recv_data.split(b"\n")
+            header_lines[len(header_lines) - 1] = (header_lines[len(header_lines) - 1] + recv_data[0])
+            header_lines = (header_lines + recv_data[1:])
+            if (header_lines[len(header_lines) - 1] == b""):
+                header_lines = header_lines[:-2]
+                break
+            if (len(header_split) > 1):
+                break
 
         split_preline = header_lines[0].decode("utf-8").split(" ")
         split_url = split_preline[1].split("?")
@@ -250,7 +246,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             process_request(activity_queue,reuse_socket,address,config,route_names,routes,error_routes,True)
         terminate()
 
-    except BrokenPipeError as exception:
+    except (BrokenPipeError, ConnectionResetError) as exception:
         print(f"[{debug_name} - ERROR] Connection interrupted.")
 
     except ssl.SSLError as exception:
@@ -332,7 +328,6 @@ class ScheduledResponse:
                 generated_response.content = generated_response.content.encode("utf-8")
             elif (isinstance(generated_response.content,FilePath)):
                 generated_response.headers["Content-Type"] = (mimetypes.guess_type(generated_response.content.path,False)[0] or "text/plain")
-                #generated_response.content = generated_response.content.read()
             elif (isinstance(generated_response.content,dict)):
                 generated_response.headers["Content-Type"] = "application/json"
                 generated_response.content = json.dumps(generated_response.content).encode("utf-8")

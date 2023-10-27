@@ -157,3 +157,14 @@ class OutsideHTTP:
                 return
             if (process._last_activity < queue_item):
                 process._last_activity = queue_item
+
+class OutsideHttpsRedirect:
+    def __init__(self,host,destination):
+        self.host = host
+        self.destination_host = destination
+
+    def run(self):
+        pass
+
+    def terminate(self):
+        pass
