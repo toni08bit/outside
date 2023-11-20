@@ -1,0 +1,18 @@
+[project]
+name = "outside-framework"
+version = "1.0.0"
+authors = [
+    { name = "BillPlayzToday", email = "hello1502.channel@gmail.com" }
+]
+description = "An easy-to-use python web framework. Inspired by Flask. "
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/BillPlayzToday/outside"
+Issues = "https://github.com/BillPlayzToday/outside/issues"
