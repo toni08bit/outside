@@ -3,8 +3,10 @@
 ## What's this?
 An easy-to-use python web framework. Inspired by Flask.
 
-## Requirements
-**None!** The module relies entirely on pre-installed modules.
+## Install
+This project is available on pip via the **outside-framework** name.
+
+    pip install outside-framework
 
 ## Demo
 The software is actively being used at [billplayz.de](https://billplayz.de/)
