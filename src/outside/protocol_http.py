@@ -291,8 +291,8 @@ class Request:
             return None
 
 class Response:
-    def __init__(self,request,status_code,headers,content,cookies = {}):
-        self.request = request
+    def __init__(self,status_code,headers,content,cookies = {}):
+        self.request = None
         self.status_code = status_code
         self.headers = headers
         self.content = content
@@ -308,6 +308,13 @@ class ScheduledResponse:
         generated_response = None
         try:
             generated_response = self.route_function(self.request)
+            generated_response.request = self.request
+            if (generated_response.status_code not in outside.code_description.code_info.keys()):
+                print(f"[{self.request.address[0]} - ERROR] Unknown status: {str(generated_response.status_code)}")
+                raise ValueError
+            elif (not isinstance(generated_response.headers,dict)):
+                print(f"[{self.request.address[0]} - ERROR] Unreadable response.headers value.")
+                raise ValueError
             if (type(generated_response) not in [Response,type(None)]):
                 generated_response = self.error_routes[generated_response[0]](self.request,generated_response[1])
         except Exception as exception:

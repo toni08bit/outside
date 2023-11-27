@@ -1,4 +1,5 @@
 import time
+import sys
 import socket
 import signal
 import multiprocessing
@@ -36,6 +37,7 @@ class OutsideHTTP:
         self._routes = {}
         self._route_names = []
         self._error_routes = {}
+        self._is_halting = False
 
         def _create_errorhandler(error_code,error_description):
             def _errorhandler(request,message = None):
@@ -69,6 +71,9 @@ class OutsideHTTP:
         del self._error_routes[errorcode]
 
     def terminate(self,signum = None,stackframe = None):
+        if (self._is_halting):
+            print(f"[MAIN - WARN] Multiple signals received.")
+            return
         if (signum):
             print(f"[MAIN - INFO] Signal {signum} received.")
         else:
@@ -90,10 +95,11 @@ class OutsideHTTP:
                 else:
                     print(f"[MAIN - INFO] {running_process._socket_address[0]} exited in final steps.")
             else:
-                print(f"[MAIN - WARN] {running_process._socket_address[0]} is already terminated in final steps.")
+                print(f"[MAIN - WARN] {running_process._socket_address[0]} is already terminated in final steps. (Low rate!)")
 
         self._active_requests = []
         print(f"[MAIN - INFO] All processes have exited. Done!")
+        sys.exit()
 
     def run(self):
         signal.signal(signal.SIGINT,self.terminate)
