@@ -44,7 +44,6 @@ class OutsideHTTP:
                 if (message == None):
                     message = "No further information."
                 return protocol_http.Response(
-                    request = request,
                     status_code = error_code,
                     headers = {},
                     content = f"{str(error_code)} {error_description} ({message})"
