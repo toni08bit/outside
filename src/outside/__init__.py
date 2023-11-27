@@ -78,6 +78,7 @@ class OutsideHTTP:
         else:
             print("[MAIN - INFO] No signal received.")
         print(f"[MAIN - INFO] Terminating, closing sockets.")
+        self._is_halting = True
 
         self._main_socket.shutdown(socket.SHUT_RDWR)
         self._main_socket.close()
