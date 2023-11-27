@@ -308,15 +308,16 @@ class ScheduledResponse:
         generated_response = None
         try:
             generated_response = self.route_function(self.request)
-            generated_response.request = self.request
-            if (generated_response.status_code not in outside.code_description.code_info.keys()):
-                print(f"[{self.request.address[0]} - ERROR] Unknown status: {str(generated_response.status_code)}")
-                raise ValueError
-            elif (not isinstance(generated_response.headers,dict)):
-                print(f"[{self.request.address[0]} - ERROR] Unreadable response.headers value.")
-                raise ValueError
-            if (type(generated_response) not in [Response,type(None)]):
+            if (isinstance(generated_response,tuple)):
                 generated_response = self.error_routes[generated_response[0]](self.request,generated_response[1])
+            else:
+                generated_response.request = self.request
+                if (generated_response.status_code not in outside.code_description.code_info.keys()):
+                    print(f"[{self.request.address[0]} - ERROR] Unknown status: {str(generated_response.status_code)}")
+                    raise ValueError
+                elif (not isinstance(generated_response.headers,dict)):
+                    print(f"[{self.request.address[0]} - ERROR] Unreadable response.headers value.")
+                    raise ValueError
         except Exception as exception:
             print(f"[{self.request.address[0]} - ERROR] Unexpected server error:")
             traceback.print_exc()
