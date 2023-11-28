@@ -99,7 +99,7 @@ class OutsideHTTP:
 
         self._active_requests = []
         print(f"[MAIN - INFO] All processes have exited. Done!")
-        sys.exit()
+        sys.exit(0)
 
     def run(self):
         signal.signal(signal.SIGINT,self.terminate)
