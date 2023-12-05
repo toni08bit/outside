@@ -63,6 +63,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 if (limited_read <= 0):
                     break
                 send_socket.send(current_chunk)
+                activity_queue.put(time.time())
 
     try:
         signal.signal(signal.SIGINT,terminate)
