@@ -29,6 +29,12 @@ This simple script responds with "Hello World!" to every request.
         http_server.run()
 
 ## Reference
+
+### outside.OutsideHTTP
+
+    Syntax: outside.OutsideHTTP(host: tuple[ip: string, port: int])
+    Example: outside.OutsideHTTP(("0.0.0.0",80))
+
 ### outside.OutsideHTTP.config
 |key|value|type|default|
 |--|--|--|--|
@@ -76,3 +82,17 @@ This simple script responds with "Hello World!" to every request.
 
     Syntax: outside.OutsideHTTP.run()
     Example: http_server.run()
+
+### outside.protocol_http.Request
+You should not construct this as a "user"! (No possible reason to do so)
+
+    Syntax: outside.protocol_http.Request(method: string["GET","POST",etc.], headers: dict, content: bytes, version: string, url: string, address: (ip: string, port: int))
+    Example: outside.protocol_http.Request("GET",{"Accept": "application/json"},b"I'm a client!","HTTP/1.1","/funny_endpoint/index.html",("127.0.0.1",18263))
+
+### outside.protocol_http.cookies
+[http.cookies.SimpleCookie](https://docs.python.org/3/library/http.cookies.html#http.cookies.SimpleCookie)
+
+### outside.protocol_http.Response
+
+    Syntax: outside.protocol_http.Response(status_code: int, headers: dict, content: Any, cookies: dict)
+    Example: outside.protocol_http.Response(404,{},"Page not found!")
