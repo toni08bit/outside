@@ -1,4 +1,3 @@
-
 # outside
 ## What's this?
 An easy-to-use python web framework. Inspired by Flask.
@@ -31,20 +30,22 @@ This simple script responds with "Hello World!" to every request.
 
 ## Reference
 ### outside.OutsideHTTP.config
-**host**: (address: *string* ["0.0.0.0"], port: *int* [80])
-**backlog_length**: length: *int* [25]
-**process_timeout**: seconds: *int* [60]
-**termination_timeout**: seconds: *int* [5]
-**recv_size**: bytes: *int* [1024]
-**send_size**: bytes: *int* [1024]
-**accept_timeout**: seconds: *int* [0.02]
-**ssl_enabled**: enabled: *bool* [False]
-**ssl_keyfile**: path: *string* [""]
-**ssl_certfile**: path: *string* [""]
-**max_body_size_mb**: megabytes: *int* [250]
-**keep_alive**: enabled: *bool* [True]
-**post_callback**: callback: *function* or *None* [None]
-**pre_send**: callback: *function* or *None* [None]
+|key|value|type|default|
+|--|--|--|--|
+|host|(address, port)|(string, int)|("0.0.0.0", 80)|
+|backlog_length|length|int|25|
+|process_timeout|seconds|int|60|
+|termination_timeout|seconds|int|5|
+|recv_size|bytes|int|1024|
+|send_size|bytes|int|1024|
+|accept_timeout|seconds|int|0.02|
+|ssl_enabled|enabled|bool|False|
+|ssl_keyfile|path|string|""|
+|ssl_certfile|path|string|""|
+|max_body_size_mb|megabytes|int|250|
+|keep_alive|enabled|bool|True|
+|post_callback|callback|function or None|None|
+|pre_send|callback|function or None|None|
 
 ### outside.OutsideHTTP.set_route()
 
@@ -75,4 +76,3 @@ This simple script responds with "Hello World!" to every request.
 
     Syntax: outside.OutsideHTTP.run()
     Example: http_server.run()
-
