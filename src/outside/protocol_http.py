@@ -110,7 +110,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 break
 
         split_preline = header_lines[0].decode("utf-8").split(" ")
-        split_url = split_preline[1].split("?")
+        split_url = split_preline[1].split("?",1)
         request_class.method = split_preline[0].upper()
         request_class.url = split_url[0]
         if (len(split_url) > 1):
