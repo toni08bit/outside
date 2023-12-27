@@ -164,13 +164,30 @@ class OutsideHTTP:
             if (process._last_activity < queue_item):
                 process._last_activity = queue_item
 
-class OutsideHttpsRedirect:
+class OutsideHTTP_Redirect:
     def __init__(self,host,destination):
         self.host = host
         self.destination_host = destination
+        self._is_started = False
+
+        self.http_server = OutsideHTTP(host)
+        self.http_server.config["backlog_length"] = 1
+        self.http_server.config["process_timeout"] = 10
+        self.http_server.config["termination_timeout"] = 2
+        self.http_server.config["keep_alive"] = False
+        self.http_server.config["max_body_size_mb"] = 0
+
+        def main_route(request):
+            return protocol_http.Response(
+                status_code = 301,
+                headers = {
+                    "Location": f"{self.destination_host}{request.url}"
+                }
+            )
+        self.http_server.set_route("/",main_route)
 
     def run(self):
-        pass
+        self.http_server.run()
 
     def terminate(self):
-        pass
+        self.http_server.terminate()
