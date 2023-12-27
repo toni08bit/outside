@@ -182,7 +182,8 @@ class OutsideHTTP_Redirect:
                 status_code = 301,
                 headers = {
                     "Location": f"{self.destination_host}{request.url}"
-                }
+                },
+                content = ""
             )
         self.http_server.set_route("/",main_route)
 
