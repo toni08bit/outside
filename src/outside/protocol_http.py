@@ -11,7 +11,7 @@ import socket
 import signal
 import ssl
 
-import code_description as code_description
+import outside.code_description as code_description
 
 def process_request(activity_queue,connected_socket,address,config,route_names,routes,error_routes,is_reused = False):
     start_time = time.time()
