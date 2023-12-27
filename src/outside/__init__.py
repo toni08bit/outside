@@ -181,7 +181,7 @@ class OutsideHTTP_Redirect:
             return protocol_http.Response(
                 status_code = 301,
                 headers = {
-                    "Location": f"{self.destination_host}{request.url}"
+                    "Location": f"{self.destination_host}{request.url[1:]}"
                 },
                 content = ""
             )
