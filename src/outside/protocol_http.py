@@ -11,7 +11,7 @@ import socket
 import signal
 import ssl
 
-import outside.code_description
+import code_description
 
 def process_request(activity_queue,connected_socket,address,config,route_names,routes,error_routes,is_reused = False):
     start_time = time.time()
@@ -201,7 +201,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
         else:
             response_class.headers["Connection"] = "close"
 
-        response_data = (b"HTTP/1.1 " + str(response_class.status_code).encode("utf-8") + b" " + outside.code_description.get_description(response_class.status_code).encode("utf-8") + b"\n")
+        response_data = (b"HTTP/1.1 " + str(response_class.status_code).encode("utf-8") + b" " + code_description.get_description(response_class.status_code).encode("utf-8") + b"\n")
 
         for header_name in response_class.headers:
             header_value = response_class.headers[header_name]
@@ -313,7 +313,7 @@ class ScheduledResponse:
                 generated_response = self.error_routes[generated_response[0]](self.request,generated_response[1])
             else:
                 generated_response.request = self.request
-                if (generated_response.status_code not in outside.code_description.code_info.keys()):
+                if (generated_response.status_code not in code_description.code_info.keys()):
                     print(f"[{self.request.address[0]} - ERROR] Unknown status: {str(generated_response.status_code)}")
                     raise ValueError
                 elif (not isinstance(generated_response.headers,dict)):

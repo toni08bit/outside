@@ -5,8 +5,8 @@ import signal
 import multiprocessing
 import queue
 
-import outside.protocol_http as protocol_http
-import outside.code_description as code_description
+import protocol_http
+import code_description
 
 
 class OutsideHTTP:
