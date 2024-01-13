@@ -1,6 +1,6 @@
 [project]
 name = "outside-framework"
-version = "1.2.0"
+version = "1.2.1"
 authors = [
     { name = "BillPlayzToday", email = "hello1502.channel@gmail.com" }
 ]
