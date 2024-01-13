@@ -28,7 +28,8 @@ class OutsideHTTP:
             "big_definition_mb": 50, # x MB is considered as "big" and response gets sent with higher transmission speed (increses latency)
             "big_send_limit_mb": 100, # x MB is the max. packet send size for "big" responses
             "post_callback": None, # Call this function with the request and response data for e.g. statistics
-            "pre_send": None # Modify the final response before sending
+            "pre_send": None, # Modify the final response before sending
+            "server_cleanup": None # Call this function after the webserver has terminated
         }
         self.config["host"] = host
 
@@ -98,7 +99,11 @@ class OutsideHTTP:
                 print(f"[MAIN - WARN] {running_process._socket_address[0]} is already terminated in final steps. (Low rate!)")
 
         self._active_requests = []
-        print(f"[MAIN - INFO] All processes have exited. Done!")
+        print("[MAIN - INFO] All processes have exited.")
+        if (self.config["server_cleanup"]):
+            print("[MAIN - INFO] Running server cleanup.")
+            self.config["server_cleanup"]()
+        print("[MAIN - INFO] Terminated.")
         sys.exit(0)
 
     def run(self):
