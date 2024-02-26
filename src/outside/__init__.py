@@ -1,4 +1,5 @@
 import time
+import os
 import sys
 import socket
 import signal
@@ -119,7 +120,7 @@ class OutsideHTTP:
         self._main_socket.settimeout(self.config["accept_timeout"])
         self._main_socket.listen(self.config["backlog_length"])
 
-        print("[MAIN - INFO] Listening.")
+        print(f"[MAIN - INFO] Listening on {str(self.config["host"][1])}.")
         while (not self._terminate_process):
             try:
                 accepted_socket,address = self._main_socket.accept()
@@ -197,3 +198,31 @@ class OutsideHTTP_Redirect:
 
     def terminate(self):
         self.http_server.terminate()
+
+if (__name__ == "__main__"):
+    http_server = OutsideHTTP(("0.0.0.0",8000))
+
+    def main_route(request):
+        requested_path = os.path.abspath(os.getcwd() + request.url)
+        if (not requested_path.startswith(os.getcwd())):
+            return 403,"Invalid parent folder."
+        if (os.path.isdir(requested_path)):
+            if (os.path.exists(requested_path + "/index.html")):
+                return protocol_http.Response(
+                    status_code = 200,
+                    headers = {},
+                    content = protocol_http.FilePath(requested_path + "/index.html")
+                )
+            else:
+                return 404,"No index.html file."
+        elif (os.path.isfile(requested_path)):
+            return protocol_http.Response(
+                status_code = 200,
+                headers = {},
+                content = protocol_http.FilePath(requested_path)
+            )
+        else:
+            return 404,"URL not found or unavailable."
+    http_server.set_route("/",main_route)
+
+    http_server.run()
