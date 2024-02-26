@@ -120,7 +120,7 @@ class OutsideHTTP:
         self._main_socket.settimeout(self.config["accept_timeout"])
         self._main_socket.listen(self.config["backlog_length"])
 
-        print(f"[MAIN - INFO] Listening on {str(self.config["host"][1])}.")
+        print(f"[MAIN - INFO] Listening on {str(self.config['host'][1])}.")
         while (not self._terminate_process):
             try:
                 accepted_socket,address = self._main_socket.accept()
