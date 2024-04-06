@@ -1,11 +1,12 @@
 import os
 import sys
+
 import outside
 
 if (__name__ == "__main__"):
     http_server = outside.OutsideHTTP(("0.0.0.0",8000))
 
-    if (not sys.argv[1]):
+    if (len(sys.argv) <= 1):
         print("[CLI] No parameters passed, starting file server in working directory.")
         def main_route(request):
             requested_path = os.path.abspath(os.getcwd() + request.url)
@@ -35,7 +36,17 @@ if (__name__ == "__main__"):
 
         def main_exit():
             pass
-        main_socket.bind_exit(main_exit)
+        main_socket.on_exit(main_exit)
+
+        def main_handler(connection):
+            import time
+            print("connection established")
+            connection.send(b"hello")
+            print("sent hello")
+            time.sleep(5)
+        main_socket.on_connection(main_handler)
+
+        http_server.set_route("/",main_socket)
     else:
         print("[CLI] Invalid parameters!")
         sys.exit(2)

@@ -1,13 +1,12 @@
 import time
-import os
 import sys
 import socket
 import signal
 import multiprocessing
 import queue
 
-import outside.protocol_http as protocol_http
-import outside.code_description as code_description
+from . import protocol_http
+from . import code_description
 
 
 class OutsideHTTP:

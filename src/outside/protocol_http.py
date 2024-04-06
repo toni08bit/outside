@@ -10,13 +10,20 @@ import urllib.parse
 import socket
 import signal
 import ssl
+import base64
+import hashlib
 
-import outside.code_description as code_description
+from . import code_description
+from . import utility
 
 def process_request(activity_queue,connected_socket,address,config,route_names,routes,error_routes,is_reused = False):
     start_time = time.time()
     debug_name = f"{address[0]}:{str(address[1])}"
 
+    def terminate(signum = None,stackframe = None):
+        close_socket(connected_socket)
+        sys.exit(0)
+    
     def close_socket(unknown_socket):
         try:
             unknown_socket.shutdown(socket.SHUT_RDWR)
@@ -27,16 +34,15 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             unknown_socket.close()
         except OSError:
             pass
-
-    def terminate(signum = None,stackframe = None):
-        close_socket(connected_socket)
-        sys.exit(0)
+    
+    def get_socket():
+        if (config["ssl_enabled"]):
+            return connected_ssl_socket
+        else:
+            return connected_socket
 
     def recv(recv_size = config["recv_size"]):
-        if (config["ssl_enabled"]):
-            return connected_ssl_socket.recv(recv_size)
-        else:
-            return connected_socket.recv(recv_size)
+        return get_socket().recv(recv_size)
 
     def send(data,append_file = None):
         send_size = config["send_size"]
@@ -45,9 +51,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             data_length = (data_length + (append_file.read_end - append_file.read_start))
         if (data_length > (config["big_definition_mb"] * 1024 * 1024)):
             send_size = (config["big_send_limit_mb"] * 1024 * 1024)
-        send_socket = connected_socket
-        if (config["ssl_enabled"]):
-            send_socket = connected_ssl_socket
+        send_socket = get_socket()
 
         while (len(data) > 0):
             send_socket.send(data[:send_size])
@@ -87,7 +91,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                         raise
 
         # Begin Request Flow
-        request_class = Request("NONE",{},b"","HTTP/-1","/",address)
+        request_class = Request("",{},b"","","",address)
         # Receive Request Info + Headers
         print(f"[{debug_name} - INFO] Waiting for request info.")
         header_lines = [b""]
@@ -122,6 +126,8 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             split_line = header_line.decode("utf-8").split(": ")
             request_class.headers[split_line[0]] = split_line[1]
 
+        request_class._extract_cookies()
+
         print(f"[{debug_name} - INFO] Flow: {request_class.headers.get('Host') or ''}{request_class.url}")
 
         # Receive Body
@@ -146,15 +152,32 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 break
         if (not responding_route):
             responding_route = error_routes[404]
+        if (isinstance(responding_route,Websocket)):
+            print(f"[{debug_name} - INFO] Initializing websocket.")
+            if ((request_class.headers.get("Connection")) and ("Upgrade" in request_class.headers["Connection"]) and (request_class.headers.get("Upgrade") == "websocket") and (request_class.headers.get("Sec-WebSocket-Key"))):
+                websocket_connection = WebsocketConnection(request_class,get_socket(),activity_queue,terminate)
+            else:
+                print(f"[{debug_name} - ERROR] Handshake not accepted.")
+                responding_route = error_routes[400]
 
         # Respond
-        print(f"[{debug_name} - INFO] Generating response.")
-        request_class._extract_cookies()
-        scheduled_response_class = ScheduledResponse(request_class,responding_route,error_routes)
-        response_class = scheduled_response_class.run()
-        if (not response_class):
-            print(f"[{debug_name} - WARN] ScheduledResponse did not return Response, releasing process.")
-            terminate()
+        if (isinstance(responding_route,Websocket)):
+            response_class = Response(
+                status_code = 101,
+                headers = {
+                    "Upgrade": "websocket",
+                    "Connection": "Upgrade",
+                    "Sec-Websocket-Accept": base64.b64encode(hashlib.sha1(f"{request_class.headers.get('Sec-WebSocket-Key')}258EAFA5-E914-47DA-95CA-C5AB0DC85B11".encode("utf-8")).digest()).decode("utf-8")
+                },
+                content = b""
+            )
+        else:
+            print(f"[{debug_name} - INFO] Generating response.")
+            scheduled_response_class = ScheduledResponse(request_class,responding_route,error_routes)
+            response_class = scheduled_response_class.run()
+            if (not response_class):
+                print(f"[{debug_name} - WARN] ScheduledResponse did not return Response, releasing process.")
+                terminate()
 
         content_is_file = isinstance(response_class.content,FilePath)
 
@@ -195,19 +218,20 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             response_class.headers["Content-Length"] = len(response_class.content)
         
         socket_keep_alive = False
-        if ((config["keep_alive"]) and (request_class.headers.get("Connection") == "keep-alive")):
-            response_class.headers["Connection"] = "keep-alive"
-            socket_keep_alive = True
-        else:
-            response_class.headers["Connection"] = "close"
+        if (not response_class.headers.get("Connection")):
+            if ((config["keep_alive"]) and (request_class.headers.get("Connection") == "keep-alive")):
+                response_class.headers["Connection"] = "keep-alive"
+                socket_keep_alive = True
+            else:
+                response_class.headers["Connection"] = "close"
 
-        response_data = (b"HTTP/1.1 " + str(response_class.status_code).encode("utf-8") + b" " + code_description.get_description(response_class.status_code).encode("utf-8") + b"\n")
+        response_data = (b"HTTP/1.1 " + str(response_class.status_code).encode("utf-8") + b" " + code_description.get_description(response_class.status_code).encode("utf-8") + b"\r\n")
 
         for header_name in response_class.headers:
             header_value = response_class.headers[header_name]
             if (isinstance(header_value,int)):
                 header_value = str(header_value)
-            response_data = (response_data + header_name.encode("utf-8") + b": " + header_value.encode("utf-8") + b"\n")
+            response_data = (response_data + header_name.encode("utf-8") + b": " + header_value.encode("utf-8") + b"\r\n")
 
         if (response_class.headers.get("Set-Cookie")):
             print(f"[{debug_name} - ERROR] Set-Cookie header was returned by ScheduledResponse, use add_cookie instead.")
@@ -226,17 +250,21 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 response_data = (response_data + f"; Path={cookie_value.path}".encode("utf-8"))
             if (cookie_value.same_site):
                 response_data = (response_data + f"; SameSite={cookie_value.same_site}".encode("utf-8"))
-            response_data = (response_data + b"\n")
+            response_data = (response_data + b"\r\n")
 
         print(f"[{debug_name} - INFO] Sending response.")
         if (content_is_file):
-            response_data = (response_data + b"\n")
+            response_data = (response_data + b"\r\n")
             send(response_data,response_class.content)
         else:
-            response_data = (response_data + b"\n" + response_class.content)
+            response_data = (response_data + b"\r\n" + response_class.content)
             send(response_data)
 
-        print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str((time.time() - start_time) / 1000)}ms.")
+        print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str(round((time.time() - start_time) / 1000 / 1000) * 1000)}ms.")
+        if (isinstance(responding_route,Websocket)):
+            print(f"[{debug_name} - INFO] Handshake complete.")
+            responding_route.connection_handler(websocket_connection)
+        
         if (config["post_callback"]):
             config["post_callback"](request_class,response_class)
         if (socket_keep_alive):
@@ -352,19 +380,35 @@ class ScheduledResponse:
 
 class Websocket:
     def __init__(self):
-        pass # TODO
+        self.connection_handler = None
+        self.exit_handler = None
 
-    def bind_exit(self):
-        pass
+    def on_connection(self,connection_handler):
+        self.connection_handler = connection_handler
+
+    def on_exit(self,exit_handler):
+        self.exit_handler = exit_handler
+
+class WebsocketConnection:
+    def __init__(self,request_class,http_socket,activity_queue,terminate_function):
+        self.request = request_class
+        self.socket = http_socket
+        self._activity_queue = activity_queue
+        self._terminate = terminate_function
 
     def exit(self):
-        pass
+        self._activity_queue.put(time.time())
+        self._terminate()
 
     def recv(self,bytes):
-        pass
+        self._activity_queue.put(time.time())
+        
+        # TODO receive
 
     def send(self,data):
-        pass
+        self._activity_queue.put(time.time())
+        
+        # TODO send
 
 class FilePath:
     def __init__(self,path):
