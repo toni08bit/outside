@@ -354,6 +354,18 @@ class Websocket:
     def __init__(self):
         pass # TODO
 
+    def bind_exit(self):
+        pass
+
+    def exit(self):
+        pass
+
+    def recv(self,bytes):
+        pass
+
+    def send(self,data):
+        pass
+
 class FilePath:
     def __init__(self,path):
         self.path = path
