@@ -148,7 +148,7 @@ class OutsideHTTP:
                 new_queue = multiprocessing.Queue()
                 new_process = multiprocessing.Process(
                     target = protocol_http.process_request,
-                    name = f"(outside subprocess) HTTP Request from {address[0]}:{address[1]}",
+                    name = f"[outside] HTTP request from {address[0]}:{address[1]}",
                     daemon = True,
                     args = [new_queue,accepted_socket,address,self.config,self._route_names,self._routes,self._error_routes]
                 )

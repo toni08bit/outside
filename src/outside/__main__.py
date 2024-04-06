@@ -2,6 +2,7 @@ import os
 import sys
 
 import outside
+import outside.protocol_websocket
 
 if (__name__ == "__main__"):
     http_server = outside.OutsideHTTP(("0.0.0.0",8000))
@@ -32,18 +33,16 @@ if (__name__ == "__main__"):
         http_server.set_route("/",main_route)
     elif (sys.argv[1] == "websocket"):
         print("[CLI] Starting echoing websocket.")
-        main_socket = outside.protocol_http.Websocket()
+        main_socket = outside.protocol_websocket.WebSocket()
 
         def main_exit():
             pass
         main_socket.on_exit(main_exit)
 
         def main_handler(connection):
-            import time
-            print("connection established")
-            connection.send(b"hello")
-            print("sent hello")
-            time.sleep(5)
+            while True:
+                received_data = connection.recv()
+                connection.send(received_data)
         main_socket.on_connection(main_handler)
 
         http_server.set_route("/",main_socket)

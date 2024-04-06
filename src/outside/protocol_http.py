@@ -14,7 +14,7 @@ import base64
 import hashlib
 
 from . import code_description
-from . import utility
+from . import protocol_websocket
 
 def process_request(activity_queue,connected_socket,address,config,route_names,routes,error_routes,is_reused = False):
     start_time = time.time()
@@ -152,16 +152,16 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 break
         if (not responding_route):
             responding_route = error_routes[404]
-        if (isinstance(responding_route,Websocket)):
+        if (isinstance(responding_route,protocol_websocket.WebSocket)):
             print(f"[{debug_name} - INFO] Initializing websocket.")
             if ((request_class.headers.get("Connection")) and ("Upgrade" in request_class.headers["Connection"]) and (request_class.headers.get("Upgrade") == "websocket") and (request_class.headers.get("Sec-WebSocket-Key"))):
-                websocket_connection = WebsocketConnection(request_class,get_socket(),activity_queue,terminate)
+                websocket_connection = protocol_websocket.WebSocketConnection(request_class,get_socket(),activity_queue,terminate)
             else:
                 print(f"[{debug_name} - ERROR] Handshake not accepted.")
                 responding_route = error_routes[400]
 
         # Respond
-        if (isinstance(responding_route,Websocket)):
+        if (isinstance(responding_route,protocol_websocket.WebSocket)):
             response_class = Response(
                 status_code = 101,
                 headers = {
@@ -261,9 +261,10 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             send(response_data)
 
         print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str(round((time.time() - start_time) / 1000 / 1000) * 1000)}ms.")
-        if (isinstance(responding_route,Websocket)):
+        if (isinstance(responding_route,protocol_websocket.WebSocket)):
             print(f"[{debug_name} - INFO] Handshake complete.")
             responding_route.connection_handler(websocket_connection)
+            websocket_connection.exit()
         
         if (config["post_callback"]):
             config["post_callback"](request_class,response_class)
@@ -377,38 +378,6 @@ class ScheduledResponse:
             generated_response.content = generated_response.content.encode("utf-8")
 
         return generated_response
-
-class Websocket:
-    def __init__(self):
-        self.connection_handler = None
-        self.exit_handler = None
-
-    def on_connection(self,connection_handler):
-        self.connection_handler = connection_handler
-
-    def on_exit(self,exit_handler):
-        self.exit_handler = exit_handler
-
-class WebsocketConnection:
-    def __init__(self,request_class,http_socket,activity_queue,terminate_function):
-        self.request = request_class
-        self.socket = http_socket
-        self._activity_queue = activity_queue
-        self._terminate = terminate_function
-
-    def exit(self):
-        self._activity_queue.put(time.time())
-        self._terminate()
-
-    def recv(self,bytes):
-        self._activity_queue.put(time.time())
-        
-        # TODO receive
-
-    def send(self,data):
-        self._activity_queue.put(time.time())
-        
-        # TODO send
 
 class FilePath:
     def __init__(self,path):
