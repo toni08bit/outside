@@ -65,7 +65,7 @@ This simple script responds with "Hello World!" to every request.
 
 ### outside.OutsideHTTP.set_errorhandler()
 
-    Syntax: outside.OutsideHTTP.set_errorhandler(errorcode: int, handler: function)
+    Syntax: outside.OutsideHTTP.set_errorhandler(errorcode: int, handler: function/WebSocket)
     Example: http_server.set_errorhandler(404,my_function)
 
 ### outside.OutsideHTTP.remove_errorhandler()
@@ -84,7 +84,7 @@ This simple script responds with "Hello World!" to every request.
     Example: http_server.run()
 
 ### outside.protocol_http.Request
-You should not construct this as a "user"! (No possible reason to do so)
+There is no reason to construct this, unless you want to fake logs.
 
     Syntax: outside.protocol_http.Request(method: string["GET","POST",etc.], headers: dict, content: bytes, version: string, url: string, address: (ip: string, port: int))
     Example: outside.protocol_http.Request("GET",{"Accept": "application/json"},b"I'm a client!","HTTP/1.1","/funny_endpoint/index.html",("127.0.0.1",18263))
@@ -96,3 +96,8 @@ You should not construct this as a "user"! (No possible reason to do so)
 
     Syntax: outside.protocol_http.Response(status_code: int, headers: dict, content: Any, cookies: dict)
     Example: outside.protocol_http.Response(404,{},"Page not found!")
+
+### outside.protocol_websocket.WebSocket
+
+    Syntax: outside.protocl_websocket.WebSocket()
+    Example: outside.protocl_websocket.WebSocket()
