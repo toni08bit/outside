@@ -13,7 +13,8 @@ class OutsideHTTP:
     def __init__(self,host):
         self.config = {
             "host": ("0.0.0.0",80), # The Host (IP,Port)
-            "backlog_length": 25, # Amount of parallel connections allowed (active or inactive)
+            "backlog_length": 50, # Amount of waiting clients allowed
+            "max_workers": 150, # Max. amount of ongoing requests (running subprocesses) allowed (includes websockets)
             "process_timeout": 60, # Time until a process with no send/recv activity gets terminated
             "termination_timeout": 5, # Time until a process which is being terminated is getting killed
             "recv_size": 1024, # Receiving packet size
@@ -122,6 +123,10 @@ class OutsideHTTP:
         print(f"[MAIN - INFO] Listening on {str(self.config['host'][1])}.")
         while (not self._terminate_process):
             try:
+                if (len(self._active_requests) >= self.config["max_workers"]):
+                    time.sleep(0.5)
+                    raise socket.timeout
+                
                 accepted_socket,address = self._main_socket.accept()
                 print(f"[MAIN - INFO] Connected to {address[0]}")
             except socket.timeout:
