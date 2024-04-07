@@ -31,6 +31,10 @@ class WebSocketConnection:
     def exit(self):
         if (self._is_terminated):
             return
+        try:
+            self._send_frame(True,8,b"")
+        except Exception:
+            pass
         self._is_terminated = True
         self._activity_queue.put(time.time())
         self._terminate()
@@ -79,6 +83,10 @@ class WebSocketConnection:
             if ((header_data["opcode"] == 0) or (header_data["opcode"] == 1) or (header_data["opcode"] == 2)):
                 msg_data.extend(payload_data)
             elif (header_data["opcode"] == 8):
+                try:
+                    self._send_frame(True,8,b"")
+                except Exception:
+                    pass
                 self.exit()
             elif (header_data["opcode"] == 9):
                 self._send_frame(True,10,b"")
