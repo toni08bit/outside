@@ -8,7 +8,7 @@ if (__name__ == "__main__"):
     http_server = outside.OutsideHTTP(("0.0.0.0",8000))
 
     if (len(sys.argv) <= 1):
-        print("[CLI] No parameters passed, starting file server in working directory.")
+        print("[CLI] No parameters passed, starting HTTP file server in working directory.")
         def main_route(request):
             requested_path = os.path.abspath(os.getcwd() + request.url)
             if (not requested_path.startswith(os.getcwd())):

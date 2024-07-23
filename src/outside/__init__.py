@@ -23,7 +23,7 @@ class OutsideHTTP:
             "ssl_enabled": False, # Enable/Disable SSL
             "ssl_keyfile": "", # SSL Private Key File, e.g.: "/etc/letsencrypt/live/billplayz.de/privkey.pem"
             "ssl_certfile": "", # SSL Public Certificate, e.g.: "/etc/letsencrypt/live/billplayz.de/cert.pem"
-            "accept_timeout": 0.02, # Interval between checking for new clients
+            "accept_timeout": 1, # Interval between checking running processes for activity
             "max_body_size_mb": 250, # Max. upload (from client) body size
             "allow_range_from_mb": 50, # Request browser to split the request into multiple from x+ MB response size ("FilePath" response only)
             "big_definition_mb": 50, # x MB is considered as "big" and response gets sent with higher transmission speed (increses latency)
@@ -73,13 +73,13 @@ class OutsideHTTP:
 
     def terminate(self,signum = None,stackframe = None):
         if (self._is_halting):
-            print(f"[MAIN - WARN] Multiple signals received.")
+            print(f"[MAIN/HTTP - WARN] Multiple signals received.")
             return
         if (signum):
-            print(f"[MAIN - INFO] Signal {signum} received.")
+            print(f"[MAIN/HTTP - INFO] Signal {signum} received.")
         else:
-            print("[MAIN - INFO] No signal received.")
-        print(f"[MAIN - INFO] Terminating, closing sockets.")
+            print("[MAIN/HTTP - INFO] No signal received.")
+        print(f"[MAIN/HTTP - INFO] Terminating, closing sockets.")
         self._is_halting = True
 
         self._main_socket.shutdown(socket.SHUT_RDWR)
@@ -89,22 +89,22 @@ class OutsideHTTP:
         for running_process,activity_queue in self._active_requests:
             if (self._check_process(running_process)):
                 running_process.terminate()
-                print(f"[MAIN - INFO] Waiting on {running_process._socket_address[0]} to terminate in final steps.")
+                print(f"[MAIN/HTTP - INFO] Waiting on {running_process._socket_address[0]} to terminate in final steps.")
                 running_process.join(timeout = self.config["termination_timeout"])
                 if (self._check_process(running_process)):
-                    print(f"[MAIN - ERROR] Killing {running_process._socket_address[0]} in final steps. (Did not terminate!)")
+                    print(f"[MAIN/HTTP - ERROR] Killing {running_process._socket_address[0]} in final steps. (Did not terminate!)")
                     running_process.kill()
                 else:
-                    print(f"[MAIN - INFO] {running_process._socket_address[0]} exited in final steps.")
+                    print(f"[MAIN/HTTP - INFO] {running_process._socket_address[0]} exited in final steps.")
             else:
-                print(f"[MAIN - WARN] {running_process._socket_address[0]} is already terminated in final steps. (Low rate!)")
+                print(f"[MAIN/HTTP - WARN] {running_process._socket_address[0]} is already terminated in final steps. (Low rate!)")
 
         self._active_requests = []
-        print("[MAIN - INFO] All processes have exited.")
+        print("[MAIN/HTTP - INFO] All processes have exited.")
         if (self.config["server_cleanup"]):
-            print("[MAIN - INFO] Running server cleanup.")
+            print("[MAIN/HTTP - INFO] Running server cleanup.")
             self.config["server_cleanup"]()
-        print("[MAIN - INFO] Terminated.")
+        print("[MAIN/HTTP - INFO] Terminated.")
         sys.exit(0)
 
     def run(self):
@@ -120,31 +120,31 @@ class OutsideHTTP:
         self._main_socket.settimeout(self.config["accept_timeout"])
         self._main_socket.listen(self.config["backlog_length"])
 
-        print(f"[MAIN - INFO] Listening on {str(self.config['host'][1])}.")
+        print(f"[MAIN/HTTP - INFO] Listening on {str(self.config['host'][1])}.")
         while (not self._terminate_process):
             try:
                 if (len(self._active_requests) >= self.config["max_workers"]):
-                    time.sleep(0.5)
+                    time.sleep(self.config["accept_timeout"])
                     raise socket.timeout
                 
                 accepted_socket,address = self._main_socket.accept()
-                print(f"[MAIN - INFO] Connected to {address[0]}")
+                print(f"[MAIN/HTTP - INFO] Connected to {address[0]}")
             except socket.timeout:
                 current_time = time.time()
                 for running_process,activity_queue in self._active_requests:
                     if (not self._check_process(running_process)):
-                        print(f"[MAIN - INFO] Removing {running_process._socket_address[0]}. (Process exited)")
+                        print(f"[MAIN/HTTP - INFO] Removing {running_process._socket_address[0]}. (Process exited)")
                         self._active_requests.remove((running_process,activity_queue))
                         continue
                     self._check_process_activity(running_process,activity_queue)
                     if ((current_time - running_process._last_activity) >= self.config["process_timeout"]):
                         if (hasattr(running_process,"_terminating_at")):
                             if ((current_time - running_process._terminating_at) >= self.config["termination_timeout"]):
-                                print(f"[MAIN - ERROR] Killing {running_process._socket_address[0]}. (Did not terminate!)")
+                                print(f"[MAIN/HTTP - ERROR] Killing {running_process._socket_address[0]}. (Did not terminate!)")
                                 running_process.kill()
                                 self._active_requests.remove((running_process,activity_queue))
                         else:
-                            print(f"[MAIN - INFO] Terminating {address[0]}. (No further activity!)")
+                            print(f"[MAIN/HTTP - INFO] Terminating {address[0]}. (No further activity!)")
                             running_process.terminate()
                             running_process._terminating_at = current_time
             except OSError:
@@ -202,3 +202,54 @@ class OutsideHTTP_Redirect:
 
     def terminate(self):
         self.http_server.terminate()
+
+class OutsideRTMP:
+    def __init__(self,host):
+        raise NotImplementedError
+        self.config = {
+            "host": ("0.0.0.0",1935),
+            "max_keys": 5,
+            "max_clients_per_key": 50,
+            "accept_timeout": 1,
+
+        }
+        self.config["host"] = host
+
+        self._terminate_process = False
+        self._active_clients = []
+        self._is_halting = False
+
+    def terminate(self,signum = None,stackframe = None):
+        if (self._is_halting):
+            print(f"[MAIN/RTMP - WARN] Multiple signals received.")
+            return
+        if (signum):
+            print(f"[MAIN/RTMP - INFO] Signal {signum} received.")
+        else:
+            print("[MAIN/RTMP - INFO] No signal received.")
+        print(f"[MAIN/RTMP - INFO] Terminating, closing sockets.")
+        self._is_halting = True
+
+    def run(self):
+        signal.signal(signal.SIGINT,self.terminate)
+        signal.signal(signal.SIGTERM,self.terminate)
+
+        self._main_socket = socket.socket(
+            family = socket.AF_INET,
+            type = socket.SOCK_STREAM
+        )
+        self._main_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        self._main_socket.bind(self.config["host"])
+        self._main_socket.settimeout(self.config["accept_timeout"])
+
+        print(f"[MAIN/RTMP - INFO] Listening on {str(self.config['host'][1])}.")
+        while (not self._terminate_process):
+            try:
+                accepted_socket,address = self._main_socket.accept()
+                print(f"[MAIN/RTMP - INFO] Connected to {address[0]}")
+            except socket.timeout:
+                pass # TODO
+            except OSError:
+                continue
+            else:
+                pass # TODO
