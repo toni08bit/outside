@@ -45,17 +45,17 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
         return get_socket().recv(recv_size)
 
     def send(data,append_file = None):
-        send_size = config["send_size"]
         data_length = len(data)
         if (append_file):
             data_length = (data_length + (append_file.read_end - append_file.read_start))
+        send_size = config["send_size"]
         if (data_length > (config["big_definition_mb"] * 1024 * 1024)):
             send_size = (config["big_send_limit_mb"] * 1024 * 1024)
         send_socket = get_socket()
 
         while (len(data) > 0):
-            send_socket.send(data[:send_size])
-            data = data[send_size:]
+            sent_bytes = send_socket.send(data[:send_size])
+            data = data[sent_bytes:]
             activity_queue.put(time.time())
 
         if (append_file):
@@ -69,10 +69,9 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 send_socket.send(current_chunk)
                 activity_queue.put(time.time())
 
+    signal.signal(signal.SIGINT,terminate)
+    signal.signal(signal.SIGTERM,terminate)
     try:
-        signal.signal(signal.SIGINT,terminate)
-        signal.signal(signal.SIGTERM,terminate)
-
         if (config["ssl_enabled"]):
             if (is_reused):
                 connected_ssl_socket = connected_socket
@@ -90,9 +89,9 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                     else:
                         raise
 
-        # Begin Request Flow
+        # Request Flow
         request_class = Request("",{},b"","","",address)
-        # Receive Request Info + Headers
+        ## Receive Request Info + Headers
         print(f"[{debug_name} - INFO] Waiting for request info.")
         header_lines = [b""]
         while True:
@@ -130,7 +129,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
 
         print(f"[{debug_name} - INFO] Flow: {request_class.headers.get('Host') or ''}{request_class.url}")
 
-        # Receive Body
+        ## Receive Body
         if (request_class.headers.get("Content-Length")):
             request_class.headers["Content-Length"] = int(request_class.headers["Content-Length"])
             if (not request_class.content):
@@ -144,7 +143,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 request_class.content = (request_class.content + recv_data)
             print(f"[{debug_name} - INFO] Received {str(len(request_class.content))}B content.")
 
-        # Check Route
+        ## Check Route
         responding_route = None
         for route_name in route_names:
             if (request_class.url.startswith(route_name)):
@@ -160,7 +159,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 print(f"[{debug_name} - ERROR] Handshake not accepted.")
                 responding_route = error_routes[400]
 
-        # Respond
+        ## Respond
         if (isinstance(responding_route,protocol_websocket.WebSocket)):
             response_class = Response(
                 status_code = 101,
@@ -276,11 +275,11 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             process_request(activity_queue,reuse_socket,address,config,route_names,routes,error_routes,True)
         terminate()
 
-    except (BrokenPipeError, ConnectionResetError) as exception:
+    except (BrokenPipeError,ConnectionResetError) as exception:
         print(f"[{debug_name} - ERROR] Connection interrupted.")
 
     except ssl.SSLError as exception:
-        print(f"[{debug_name} - ERROR] SSL Exception: {str(exception)}")
+        print(f"[{debug_name} - ERROR] SSL exception: {str(exception)}")
 
     except Exception as exception:
         print(f"[{debug_name} - ERROR] Unexpected exception:")
