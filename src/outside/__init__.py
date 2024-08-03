@@ -6,7 +6,6 @@ import multiprocessing
 import queue
 
 from . import protocol_http
-from . import protocol_rtmp
 from . import code_description
 
 
@@ -210,98 +209,3 @@ class OutsideHTTP_Redirect:
 
     def terminate(self):
         self.http_server.terminate()
-
-class OutsideRTMP:
-    def __init__(self,host,tmp_bypass_block = False): # TODO remove tmp_bypass_block when RTMP module is done
-        print("[WARN] The OutsideRTMP module is incomplete and barely functional.")
-        if (not tmp_bypass_block):
-            raise NotImplementedError()
-        self.config = {
-            "host": ("0.0.0.0",1935),
-            "backlog_length": 50,
-            "max_initiators": 20,
-            "termination_timeout": 5,
-            "accept_timeout": 1,
-            "ssl_enabled": False,
-            "ssl_keyfile": "",
-            "ssl_certfile": "",
-            "send_size": 1024,
-        }
-        self.config["host"] = host
-
-        self._terminate_process = False
-        self._active_clients = []
-        self._is_halting = False
-
-    def terminate(self,signum = None,stackframe = None):
-        if (self._is_halting):
-            print(f"[MAIN/RTMP - WARN] Multiple signals received.")
-            return
-        if (signum):
-            print(f"[MAIN/RTMP - INFO] Signal {signum} received.")
-        else:
-            print("[MAIN/RTMP - INFO] No signal received.")
-        print(f"[MAIN/RTMP - INFO] Terminating, closing sockets.")
-        self._is_halting = True
-
-        self._main_socket.shutdown(socket.SHUT_RDWR)
-        self._main_socket.close()
-        self._terminate_process = True
-
-        for running_process,process_queue,process_data in self._active_clients:
-            if (self._check_process(running_process)):
-                running_process.terminate()
-                print(f"[MAIN/HTTP - INFO] Waiting on {process_data['address'][0]} to terminate in final steps.")
-                running_process.join(timeout = self.config["termination_timeout"])
-                if (self._check_process(running_process)):
-                    print(f"[MAIN/HTTP - ERROR] Killing {process_data['address'][0]} in final steps. (Did not terminate!)")
-                    running_process.kill()
-                else:
-                    print(f"[MAIN/HTTP - INFO] {process_data['address'][0]} exited in final steps.")
-            else:
-                print(f"[MAIN/HTTP - WARN] {process_data['address'][0]} is already terminated in final steps. (Low rate!)")
-
-    def run(self):
-        signal.signal(signal.SIGINT,self.terminate)
-        signal.signal(signal.SIGTERM,self.terminate)
-
-        self._main_socket = socket.socket(
-            family = socket.AF_INET,
-            type = socket.SOCK_STREAM
-        )
-        self._main_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-        self._main_socket.bind(self.config["host"])
-        self._main_socket.settimeout(self.config["accept_timeout"])
-        self._main_socket.listen(self.config["backlog_length"])
-
-        print(f"[MAIN/RTMP - INFO] Listening on {str(self.config['host'][1])}.")
-        while (not self._terminate_process):
-            try:
-                accepted_socket,address = self._main_socket.accept()
-                print(f"[MAIN/RTMP - INFO] Connected to {address[0]}")
-            except socket.timeout:
-                pass # TODO
-            except OSError:
-                continue
-            else:
-                new_queue = multiprocessing.Queue()
-                new_process = multiprocessing.Process(
-                    target = protocol_rtmp.process_client,
-                    name = f"[outside] RTMP for {address[0]}:{address[1]}",
-                    daemon = True,
-                    args = [new_queue,accepted_socket,address,self.config]
-                )
-                new_process.start()
-                self._active_clients.append(
-                    (
-                        new_process,
-                        new_queue,
-                        {
-                            "last_activity": time.time(),
-                            "address": address
-                        }
-                    )
-                )
-
-    def _check_process(self,process):
-        return (process.exitcode == None)
