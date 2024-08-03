@@ -2,7 +2,7 @@
 name = "outside-framework"
 version = "1.4.0"
 authors = [
-    { name = "BillPlayzToday", email = "hello1502.channel@gmail.com" }
+    { name = "toni08", email = "hello1502.channel@gmail.com" }
 ]
 description = "An easy-to-use python web framework. Inspired by Flask."
 readme = "README.md"
@@ -14,5 +14,5 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/BillPlayzToday/outside"
-Issues = "https://github.com/BillPlayzToday/outside/issues"
+Homepage = "https://github.com/toni08/outside"
+Issues = "https://github.com/toni08/outside/issues"

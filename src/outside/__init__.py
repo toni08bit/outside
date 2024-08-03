@@ -212,7 +212,10 @@ class OutsideHTTP_Redirect:
         self.http_server.terminate()
 
 class OutsideRTMP:
-    def __init__(self,host):
+    def __init__(self,host,tmp_bypass_block = False): # TODO remove tmp_bypass_block when RTMP module is done
+        print("[WARN] The OutsideRTMP module is incomplete and barely functional.")
+        if (not tmp_bypass_block):
+            raise NotImplementedError()
         self.config = {
             "host": ("0.0.0.0",1935),
             "backlog_length": 50,

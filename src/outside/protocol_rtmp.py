@@ -139,6 +139,9 @@ def process_client(process_queue,connected_socket,address,config):
         double_selector.register(get_socket(),selectors.EVENT_READ,data = "socket")
         double_selector.register(process_queue._reader.fileno(),selectors.EVENT_READ,data = "queue")
 
+        client_data = {
+            "chunk_size": 4096
+        }
         last_chunk = None
         while True:
             all_events = double_selector.select()
@@ -147,36 +150,36 @@ def process_client(process_queue,connected_socket,address,config):
                     new_chunk = Chunk()
 
                     header_byte = recv_strict(1)[0]
-                    new_chunk.fmt = ((header_byte & 0b11000000) >> 6)
-                    new_chunk.cs_id = (header_byte & 0b00111111)
+                    new_chunk.format = ((header_byte & 0b11000000) >> 6)
+                    new_chunk.chunk_stream_id = (header_byte & 0b00111111)
 
-                    if (new_chunk.cs_id == 0):
+                    if (new_chunk.chunk_stream_id == 0):
                         second_byte = recv_strict(1)[0]
-                        new_chunk.cs_id = (second_byte + 64)
-                    elif (new_chunk.cs_id == 1):
+                        new_chunk.chunk_stream_id = (second_byte + 64)
+                    elif (new_chunk.chunk_stream_id == 1):
                         second_byte = recv_strict(1)[0]
                         third_byte = recv_strict(1)[0]
-                        new_chunk.cs_id = ((third_byte * 256) + second_byte + 64)
+                        new_chunk.chunk_stream_id = ((third_byte * 256) + second_byte + 64)
                     
-                    if (new_chunk.fmt == 0):
+                    if (new_chunk.format == 0):
                         new_chunk.timestamp = _read_chunk_timestamp()
                         new_chunk.message_length = _read_int(recv_strict(3))
-                        new_chunk.message_type_id = recv_strict(1)
-                        new_chunk.message_stream_id = recv_strict(4)
+                        new_chunk.message_type_id = _read_int(recv_strict(1))
+                        new_chunk.message_stream_id = _read_int(recv_strict(4))
                         pass # TODO
                     else:
                         if (not last_chunk):
                             print(f"[{debug_name} - ERROR] Missing type 0 chunk.")
                             terminate()
-                        if (new_chunk.fmt == 1):
+                        if (new_chunk.format == 1):
                             new_chunk.timestamp = _read_chunk_timestamp()
                             new_chunk.message_length = _read_int(recv_strict(3))
-                            new_chunk.message_type_id = recv_strict(1)
+                            new_chunk.message_type_id = _read_int(recv_strict(1))
 
                             new_chunk.message_stream_id = last_chunk.message_stream_id
 
                             pass # TODO
-                        elif (new_chunk.fmt == 2):
+                        elif (new_chunk.format == 2):
                             new_chunk.timestamp = _read_chunk_timestamp()
 
                             new_chunk.message_length = last_chunk.message_length
@@ -184,7 +187,7 @@ def process_client(process_queue,connected_socket,address,config):
                             new_chunk.message_stream_id = last_chunk.message_stream_id
 
                             pass # TODO
-                        elif (new_chunk.fmt == 3):
+                        elif (new_chunk.format == 3):
                             new_chunk = last_chunk
                             new_chunk.message = None
 
@@ -193,10 +196,47 @@ def process_client(process_queue,connected_socket,address,config):
                     if (new_chunk.message_length > 0):
                         new_chunk.message = recv_strict(new_chunk.message_length)
 
-                    last_chunk = new_chunk
-
-                    print(new_chunk.fmt)
+                    print(new_chunk.chunk_stream_id)
                     print(new_chunk.message_type_id)
+                    if (new_chunk.chunk_stream_id == 2 or True):
+                        if (new_chunk.message_stream_id == 0):
+                            if (new_chunk.message_type_id == 1): # Set Chunk Size
+                                new_chunk_size = _read_int(new_chunk.message)
+                                if ((new_chunk_size > 0x7FFFFFFF) or (new_chunk_size < 1)):
+                                    print(f"[{debug_name} - ERROR] Invalid Chunk Size is {str(new_chunk_size)}B.")
+                                    terminate()
+                                client_data["chunk_size"] = new_chunk_size
+                                print(f"[{debug_name} - INFO] New Chunk Size is {str(new_chunk_size)}B.")
+                            elif (new_chunk.message_type_id == 2): # Abort
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 3): # Acknowledge
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 5): # Window Acknowledgement Size
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 6): # Set Peer Bandwidth
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 4): # User Control Message
+                                event_type = recv_strict(2)
+                                print(event_type) # TODO
+                            
+                            elif ((new_chunk.message_type_id == 20) or (new_chunk.message_type_id == 17)): # Command Message AMF
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 18): # Data Message AMF0
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 15): # Data Message AMF3
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 19): # Shared Object Message AMF0
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 16): # Shared Object Message AMF3
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 8): # Audio Message
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 9): # Video Message
+                                pass # TODO
+                            elif (new_chunk.message_type_id == 22): # Aggregate Message
+                                pass # TODO
+
+                    last_chunk = new_chunk
                 elif (key.data == "queue"):
                     pass # TODO pipe announcement
     
@@ -216,8 +256,8 @@ def process_client(process_queue,connected_socket,address,config):
 
 class Chunk:
     def __init__(self):
-        self.fmt = None
-        self.cs_id = None
+        self.format = None
+        self.chunk_stream_id = None
         self.timestamp = None
         self.message_type_id = None
         self.message_stream_id = None
