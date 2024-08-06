@@ -12,17 +12,11 @@ def toggle_mask(payload_data,mask_key):
 class WebSocket:
     def __init__(self):
         self.connection_handler = None
-        self.exit_handler = None
-
-    def on_connection(self,connection_handler):
-        self.connection_handler = connection_handler
-
-    def on_exit(self,exit_handler):
-        self.exit_handler = exit_handler
 
 class WebSocketConnection:
     def __init__(self,request_class,http_socket,activity_queue,terminate_function):
         self.request = request_class
+        self.fileno = None
         self._socket = http_socket
         self._activity_queue = activity_queue
         self._terminate = terminate_function
