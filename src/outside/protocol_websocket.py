@@ -3,6 +3,7 @@ import time
 import random
 import struct
 import threading
+import traceback
 
 
 def toggle_mask(payload_data,mask_key):
@@ -18,6 +19,7 @@ class WebSocket:
 class WebSocketConnection:
     def __init__(self,request_class,http_socket,activity_queue,terminate_function):
         self.request = request_class
+        self.on_exit = None
         self._socket = http_socket
         self._activity_queue = activity_queue
         self._terminate = terminate_function
@@ -34,6 +36,12 @@ class WebSocketConnection:
     def exit(self):
         if (self._is_terminated):
             return
+        if (self.on_exit):
+            try:
+                self.on_exit()
+            except Exception:
+                print(f"[{self.request.address[0]}:{str(self.request.address[1])} - Error] on_exit has failed:")
+                traceback.print_exc()
         try:
             self._send_frame(True,8,b"")
         except Exception:
