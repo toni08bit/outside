@@ -1,9 +1,9 @@
 import os
 import time
-import random
 import struct
 import threading
 import traceback
+import signal
 
 
 def toggle_mask(payload_data,mask_key):
@@ -24,6 +24,9 @@ class WebSocketConnection:
         self._activity_queue = activity_queue
         self._terminate = terminate_function
         self._is_terminated = False
+
+        signal.signal(signal.SIGINT,self.exit)
+        signal.signal(signal.SIGTERM,self.exit)
         
         pipe_tuple = os.pipe()
         self._recv_thread = threading.Thread(
