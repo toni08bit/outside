@@ -143,18 +143,13 @@ class WebSocketConnection:
 
         payload_length = len(payload_data)
         if (payload_length <= 125):
-            header_data.append(payload_length | 0x80)
+            header_data.append(payload_length | 0x00)
         elif (payload_length <= (2 ** 16 - 1)):
-            header_data.append(126 | 0x80)
+            header_data.append(126 | 0x00)
             header_data.extend(payload_length.to_bytes(2,"big"))
         else:
-            header_data.append(127 | 0x80)
+            header_data.append(127 | 0x00)
             header_data.extend(payload_length.to_bytes(8,"big"))
 
-        mask_key = random.randint(0, 0xFFFFFFFF)
-
-        mask_key_bytes = mask_key.to_bytes(4, 'big')
-        masked_payload = toggle_mask(payload_data,mask_key_bytes)
-
-        self._socket.sendall(bytes(header_data) + bytes(mask_key_bytes) + bytes(masked_payload))
+        self._socket.sendall(bytes(header_data) + bytes(payload_data))
         return
