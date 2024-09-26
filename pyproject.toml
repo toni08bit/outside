@@ -1,6 +1,6 @@
 [project]
 name = "outside-framework"
-version = "1.5.3"
+version = "1.5.4"
 authors = [
     { name = "toni08", email = "hello1502.channel@gmail.com" }
 ]
@@ -14,5 +14,5 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/toni08/outside"
-Issues = "https://github.com/toni08/outside/issues"
+Homepage = "https://github.com/toni08bit/outside"
+Issues = "https://github.com/toni08bit/outside/issues"
