@@ -77,10 +77,10 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 connected_ssl_socket = connected_socket
             else:
                 try:
-                    connected_ssl_socket = ssl.wrap_socket(
+                    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                    ssl_context.load_cert_chain(config["ssl_certfile"],config["ssl_keyfile"])
+                    connected_ssl_socket = ssl_context.wrap_socket(
                         sock = connected_socket,
-                        keyfile = config["ssl_keyfile"],
-                        certfile = config["ssl_certfile"],
                         server_side = True
                     )
                 except ssl.SSLError as exception:
