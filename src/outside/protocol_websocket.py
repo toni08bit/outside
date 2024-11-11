@@ -25,8 +25,10 @@ class WebSocketConnection:
         self._terminate = terminate_function
         self._is_terminated = False
 
-        signal.signal(signal.SIGINT,self.exit)
-        signal.signal(signal.SIGTERM,self.exit)
+        def _terminate_signal(signum,stackframe):
+            self.exit()
+        signal.signal(signal.SIGINT,_terminate_signal)
+        signal.signal(signal.SIGTERM,_terminate_signal)
         
         pipe_tuple = os.pipe()
         self._recv_thread = threading.Thread(
