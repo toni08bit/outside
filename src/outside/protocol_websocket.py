@@ -56,8 +56,8 @@ class WebSocketConnection:
         self._terminate()
     
     def recv(self):
-        msg_length = struct.unpack("!L",self.pipe.read(4))[0]
-        thread_status = struct.unpack("!B",self.pipe.read(1))[0]
+        msg_length = int.from_bytes(self.pipe.read(4),"big")
+        thread_status = int.from_bytes(self.pipe.read(1),"big")
         if (thread_status == 0):
             self.exit()
         msg_data = self.pipe.read(msg_length)
@@ -89,7 +89,10 @@ class WebSocketConnection:
 
                     header_data = {}
 
-                    header_raw = struct.unpack("!BB",received_header)
+                    header_raw = [
+                        int.from_bytes(received_header[:1],"big"),
+                        int.from_bytes(received_header[1:],"big")
+                    ]
                     fin_frame = ((header_raw[0] & 0x80) != 0)
                     header_data["rsv1"] = ((header_raw[0] & 0x80) != 0)
                     header_data["rsv2"] = ((header_raw[0] & 0x80) != 0)
@@ -100,9 +103,9 @@ class WebSocketConnection:
                     header_data["payload_length"] = (header_raw[1] & 0x7F)
 
                     if (header_data["payload_length"] == 126):
-                        header_data["payload_length"] = struct.unpack("!H",http_socket.recv(2))[0]
+                        header_data["payload_length"] = int.from_bytes(http_socket.recv(2),"big")
                     elif (header_data["payload_length"] == 127):
-                        header_data["payload_length"] = struct.unpack("!Q",http_socket.recv(8))[0]
+                        header_data["payload_length"] = int.from_bytes(http_socket.recv(8),"big")
 
                     if (header_data["mask"]):
                         header_data["mask_key"] = http_socket.recv(4)
@@ -124,20 +127,16 @@ class WebSocketConnection:
                     if ((header_data["opcode"] == 0) or (header_data["opcode"] == 1) or (header_data["opcode"] == 2)):
                         msg_data.extend(payload_data)
                     elif (header_data["opcode"] == 8):
-                        try:
-                            self._send_frame(True,8,b"")
-                        except Exception:
-                            pass
                         raise BrokenPipeError
                     elif (header_data["opcode"] == 9):
                         self._send_frame(True,10,b"")
                 
-                os.write(write_pipe,struct.pack("!L",len(msg_data)))
-                os.write(write_pipe,struct.pack("!B",1))
+                os.write(write_pipe,len(msg_data).to_bytes(4,"big"))
+                os.write(write_pipe,(1).to_bytes(1,"big"))
                 os.write(write_pipe,msg_data)
         except Exception:
-            os.write(write_pipe,struct.pack("!L",0))
-            os.write(write_pipe,struct.pack("!B",1))
+            os.write(write_pipe,(0).to_bytes(4,"big"))
+            os.write(write_pipe,(0).to_bytes(1,"big"))
             self.exit()
 
     def _send_frame(self,fin_frame,opcode,payload_data):
