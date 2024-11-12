@@ -8,7 +8,6 @@ import queue
 from . import protocol_http
 from . import code_description
 
-
 class OutsideHTTP:
     def __init__(self,host):
         self.config = {
@@ -20,6 +19,7 @@ class OutsideHTTP:
             "recv_size": 1024, # Receiving packet size
             "send_size": 1024, # Sending packet size
             "keep_alive": True, # Allow more requests after one request is finished over the same socket
+            "max_socket_reuse": 100, # How often one socket can be used using "Connection: keep-alive"
             "ssl_enabled": False, # Enable/Disable SSL
             "ssl_keyfile": "", # SSL Private Key File, e.g.: "/etc/letsencrypt/live/billplayz.de/privkey.pem"
             "ssl_certfile": "", # SSL Public Certificate, e.g.: "/etc/letsencrypt/live/billplayz.de/cert.pem"
@@ -34,7 +34,6 @@ class OutsideHTTP:
         }
         self.config["host"] = host
 
-        self._terminate_process = False
         self._active_requests = []
         self._routes = {}
         self._route_names = []
@@ -84,7 +83,6 @@ class OutsideHTTP:
 
         self._main_socket.shutdown(socket.SHUT_RDWR)
         self._main_socket.close()
-        self._terminate_process = True
 
         for running_process,activity_queue,process_data in self._active_requests:
             if (self._check_process(running_process)):
@@ -117,43 +115,47 @@ class OutsideHTTP:
         )
         self._main_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
         self._main_socket.bind(self.config["host"])
-        self._main_socket.settimeout(self.config["accept_timeout"])
         self._main_socket.listen(self.config["backlog_length"])
 
         print(f"[MAIN/HTTP - INFO] Listening on {str(self.config['host'][1])}.")
-        while (not self._terminate_process):
+        last_inactive_check = (-self.config["accept_timeout"])
+        while (True):
             try:
+                next_inactive_check = (time.perf_counter() - last_inactive_check)
+                if (next_inactive_check >= self.config["max_workers"]):
+                    raise socket.timeout
                 if (len(self._active_requests) >= self.config["max_workers"]):
-                    time.sleep(self.config["accept_timeout"])
+                    time.sleep(next_inactive_check)
                     raise socket.timeout
                 
+                self._main_socket.settimeout(next_inactive_check)
                 accepted_socket,address = self._main_socket.accept()
-                print(f"[MAIN/HTTP - INFO] Connected to {address[0]}")
+                print(f"[MAIN/HTTP - INFO] Connected to {address[0]}:{str(address[1])}.")
             except socket.timeout:
-                current_time = time.time()
+                real_time = time.time()
                 for running_process,activity_queue,process_data in self._active_requests:
                     if (not self._check_process(running_process)):
-                        print(f"[MAIN/HTTP - INFO] Removing {process_data['address'][0]}. (Process exited)")
+                        print(f"[MAIN/HTTP - INFO] Removing {process_data['address'][0]}:{str(process_data['address'][1])}. (Process exited)")
                         self._active_requests.remove((running_process,activity_queue,process_data))
                         continue
                     self._check_process_activity(activity_queue,process_data)
-                    if ((current_time - process_data["last_activity"]) >= self.config["process_timeout"]):
+                    if ((real_time - process_data["last_activity"]) >= self.config["process_timeout"]):
                         if (process_data.get("terminating_at")):
-                            if ((current_time - process_data["terminating_at"]) >= self.config["termination_timeout"]):
-                                print(f"[MAIN/HTTP - ERROR] Killing {process_data['address'][0]}. (Did not terminate!)")
+                            if ((real_time - process_data["terminating_at"]) >= self.config["termination_timeout"]):
+                                print(f"[MAIN/HTTP - ERROR] Killing {process_data['address'][0]}:{str(process_data['address'][1])}. (Did not terminate!)")
                                 running_process.kill()
                                 self._active_requests.remove((running_process,activity_queue,process_data))
                         else:
-                            print(f"[MAIN/HTTP - INFO] Terminating {address[0]}. (No further activity!)")
+                            print(f"[MAIN/HTTP - INFO] Terminating {process_data['address'][0]}:{str(process_data['address'][1])}. (No further activity!)")
                             running_process.terminate()
-                            process_data["terminating_at"] = current_time
+                            process_data["terminating_at"] = real_time
             except OSError:
                 continue
             else:
                 new_queue = multiprocessing.Queue()
                 new_process = multiprocessing.Process(
                     target = protocol_http.process_request,
-                    name = f"[outside] HTTP for {address[0]}:{address[1]}",
+                    name = f"[outside] {address[0]}:{str(address[1])}",
                     daemon = False,
                     args = [new_queue,accepted_socket,address,self.config,self._route_names,self._routes,self._error_routes]
                 )

@@ -17,18 +17,12 @@ class WebSocket:
         self.connection_handler = None
 
 class WebSocketConnection:
-    def __init__(self,request_class,http_socket,activity_queue,terminate_function):
+    def __init__(self,request_class,http_socket,activity_queue):
         self.request = request_class
         self.on_exit = None
         self._socket = http_socket
         self._activity_queue = activity_queue
-        self._terminate = terminate_function
-        self._is_terminated = False
-
-        def _terminate_signal(signum,stackframe):
-            self.exit()
-        signal.signal(signal.SIGINT,_terminate_signal)
-        signal.signal(signal.SIGTERM,_terminate_signal)
+        self._exited = False
         
         pipe_tuple = os.pipe()
         self._recv_thread = threading.Thread(
@@ -39,21 +33,21 @@ class WebSocketConnection:
         self.pipe = os.fdopen(pipe_tuple[0],"rb")
 
     def exit(self):
-        if (self._is_terminated):
+        if (self._exited):
             return
         if (self.on_exit):
             try:
                 self.on_exit()
             except Exception:
-                print(f"[{self.request.address[0]}:{str(self.request.address[1])} - Error] on_exit has failed:")
+                print(f"[{self.request.address[0]}:{str(self.request.address[1])} - Error] Unexpected exception while executing on_exit:")
                 traceback.print_exc()
         try:
             self._send_frame(True,8,b"")
         except Exception:
             pass
-        self._is_terminated = True
+        self._exited = True
         self._activity_queue.put(time.time())
-        self._terminate()
+        raise WebSocketExit
     
     def recv(self):
         msg_length = int.from_bytes(self.pipe.read(4),"big")
@@ -117,7 +111,7 @@ class WebSocketConnection:
                         recv_size = min(payload_left,1)
                         recv_data = http_socket.recv(recv_size)
                         if (not recv_data):
-                            self._terminate()
+                            raise WebSocketExit
                         payload_data.extend(recv_data)
                         payload_left = (payload_left - len(recv_data))
 
@@ -157,3 +151,6 @@ class WebSocketConnection:
 
         self._socket.sendall(bytes(header_data) + bytes(payload_data))
         return
+    
+class WebSocketExit(BaseException):
+    pass

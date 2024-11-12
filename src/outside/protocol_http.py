@@ -16,8 +16,8 @@ import hashlib
 from . import code_description
 from . import protocol_websocket
 
-def process_request(activity_queue,connected_socket,address,config,route_names,routes,error_routes,is_reused = False):
-    start_time = time.time()
+def process_request(activity_queue,connected_socket,address,config,route_names,routes,error_routes,is_reused = 0):
+    start_time = time.perf_counter()
     debug_name = f"{address[0]}:{str(address[1])}"
 
     def terminate(signum = None,stackframe = None):
@@ -42,7 +42,10 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             return connected_socket
 
     def recv(recv_size = config["recv_size"]):
-        return get_socket().recv(recv_size)
+        recv_data = get_socket().recv(recv_size)
+        if (recv_data == b""):
+            raise BrokenPipeError
+        return recv_data
 
     def send(data,append_file = None):
         data_length = len(data)
@@ -73,7 +76,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
     signal.signal(signal.SIGTERM,terminate)
     try:
         if (config["ssl_enabled"]):
-            if (is_reused):
+            if (is_reused > 0):
                 connected_ssl_socket = connected_socket
             else:
                 try:
@@ -96,8 +99,6 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
         header_lines = [b""]
         while True:
             recv_data = recv()
-            if (len(recv_data) == 0):
-                raise BrokenPipeError
             recv_data = recv_data.replace(b"\r",b"")
             header_split = recv_data.split(b"\n\n")
             if (len(header_split) > 1):
@@ -127,7 +128,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
 
         request_class._extract_cookies()
 
-        print(f"[{debug_name} - INFO] Flow: {request_class.headers.get('Host') or ''}{request_class.url}")
+        print(f"[{debug_name} - INFO] Flow: {request_class.url}")
 
         ## Receive Body
         if (request_class.headers.get("Content-Length")):
@@ -136,7 +137,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
                 request_class.content = b""
             print(f"[{debug_name} - INFO] Receiving content.")
             if (request_class.headers["Content-Length"] > (config["max_body_size_mb"] * 1024 * 1024)):
-                print(f"[{debug_name} - WARN] Content-Length is too high, releasing process.")
+                print(f"[{debug_name} - ERROR] Content-Length is too high, releasing process.")
                 terminate()
             while (len(request_class.content) < request_class.headers["Content-Length"]):
                 recv_data = recv(min((request_class.headers["Content-Length"] - len(request_class.content)),config["recv_size"]))
@@ -218,7 +219,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
         
         socket_keep_alive = False
         if (not response_class.headers.get("Connection")):
-            if ((config["keep_alive"]) and (request_class.headers.get("Connection") == "keep-alive")):
+            if (config["keep_alive"] and (is_reused < config["max_socket_reuse"]) and (request_class.headers.get("Connection") == "keep-alive")):
                 response_class.headers["Connection"] = "keep-alive"
                 socket_keep_alive = True
             else:
@@ -233,8 +234,8 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             response_data = (response_data + header_name.encode("utf-8") + b": " + header_value.encode("utf-8") + b"\r\n")
 
         if (response_class.headers.get("Set-Cookie")):
-            print(f"[{debug_name} - ERROR] Set-Cookie header was returned by ScheduledResponse, use add_cookie instead.")
-            terminate()
+            print(f"[{debug_name} - ERROR] Set-Cookie header was returned by ScheduledResponse, add ResponseCookie to Response.cookies instead.")
+            raise RuntimeError("Set-Cookie illegaly set.")
         for cookie_name,cookie_value in response_class.cookies.items():
             response_data = (response_data + b"Set-Cookie: " + cookie_name.encode("utf-8") + b"=" + cookie_value.value.encode("utf-8"))
             if (cookie_value.max_age):
@@ -259,11 +260,14 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             response_data = (response_data + b"\r\n" + response_class.content)
             send(response_data)
 
-        print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str(round((time.time() - start_time) / 1000 / 1000) * 1000)}ms.")
+        print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str(round((time.perf_counter() - start_time) / 1000 / 1000) * 1000)}ms.")
         if (isinstance(responding_route,protocol_websocket.WebSocket)):
             print(f"[{debug_name} - INFO] Handshake complete.")
-            responding_route.connection_handler(websocket_connection)
-            websocket_connection.exit()
+            try:
+                responding_route.connection_handler(websocket_connection)
+                websocket_connection.exit()
+            except protocol_websocket.WebSocketExit:
+                pass
         
         if (config["post_callback"]):
             config["post_callback"](request_class,response_class)
@@ -272,7 +276,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             reuse_socket = connected_socket
             if (config["ssl_enabled"]):
                 reuse_socket = connected_ssl_socket
-            process_request(activity_queue,reuse_socket,address,config,route_names,routes,error_routes,True)
+            process_request(activity_queue,reuse_socket,address,config,route_names,routes,error_routes,(is_reused + 1))
         terminate()
 
     except (BrokenPipeError,ConnectionResetError) as exception:
@@ -353,7 +357,7 @@ class ScheduledResponse:
             try:
                 generated_response = self.error_routes[500](self.request,f"Unexpected Exception: {exception.__class__.__name__}")
             except Exception:
-                print(f"[{self.request.address[0]} - ERROR] Unexpected error-route error: (releasing process)")
+                print(f"[{self.request.address[0]} - ERROR] Releasing process, unexpected error-route error:")
                 traceback.print_exc()
 
         if (not generated_response):
