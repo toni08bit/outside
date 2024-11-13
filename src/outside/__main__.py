@@ -35,15 +35,11 @@ if (__name__ == "__main__"):
         print("[CLI] Starting echoing websocket.")
         main_socket = outside.protocol_websocket.WebSocket()
 
-        def main_exit():
-            pass
-        main_socket.on_exit(main_exit)
-
         def main_handler(connection):
             while True:
                 received_data = connection.recv()
                 connection.send(received_data)
-        main_socket.on_connection(main_handler)
+        main_socket.connection_handler = main_handler
 
         http_server.set_route("/",main_socket)
     else:

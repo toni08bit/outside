@@ -129,6 +129,7 @@ class WebSocketConnection:
                 os.write(write_pipe,(1).to_bytes(1,"big"))
                 os.write(write_pipe,msg_data)
         except Exception:
+            print("caught an exception inside thread")
             os.write(write_pipe,(0).to_bytes(4,"big"))
             os.write(write_pipe,(0).to_bytes(1,"big"))
             self.exit()
@@ -152,5 +153,5 @@ class WebSocketConnection:
         self._socket.sendall(bytes(header_data) + bytes(payload_data))
         return
     
-class WebSocketExit(BaseException):
+class WebSocketExit(Exception):
     pass

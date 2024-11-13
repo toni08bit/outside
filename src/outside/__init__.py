@@ -121,8 +121,8 @@ class OutsideHTTP:
         last_inactive_check = (-self.config["accept_timeout"])
         while (True):
             try:
-                next_inactive_check = (time.perf_counter() - last_inactive_check)
-                if (next_inactive_check >= self.config["max_workers"]):
+                next_inactive_check = (last_inactive_check - time.perf_counter() + self.config["accept_timeout"])
+                if (next_inactive_check < 0):
                     raise socket.timeout
                 if (len(self._active_requests) >= self.config["max_workers"]):
                     time.sleep(next_inactive_check)
@@ -132,6 +132,7 @@ class OutsideHTTP:
                 accepted_socket,address = self._main_socket.accept()
                 print(f"[MAIN/HTTP - INFO] Connected to {address[0]}:{str(address[1])}.")
             except socket.timeout:
+                last_inactive_check = time.perf_counter()
                 real_time = time.time()
                 for running_process,activity_queue,process_data in self._active_requests:
                     if (not self._check_process(running_process)):

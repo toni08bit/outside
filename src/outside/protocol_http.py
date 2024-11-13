@@ -155,7 +155,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
         if (isinstance(responding_route,protocol_websocket.WebSocket)):
             print(f"[{debug_name} - INFO] Initializing websocket.")
             if ((request_class.headers.get("Connection")) and ("Upgrade" in request_class.headers["Connection"]) and (request_class.headers.get("Upgrade") == "websocket") and (request_class.headers.get("Sec-WebSocket-Key"))):
-                websocket_connection = protocol_websocket.WebSocketConnection(request_class,get_socket(),activity_queue,terminate)
+                websocket_connection = protocol_websocket.WebSocketConnection(request_class,get_socket(),activity_queue)
             else:
                 print(f"[{debug_name} - ERROR] Handshake not accepted.")
                 responding_route = error_routes[400]
@@ -286,6 +286,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
         print(f"[{debug_name} - ERROR] SSL exception: {str(exception)}")
 
     except Exception as exception:
+        print("this exc")
         print(f"[{debug_name} - ERROR] Unexpected exception:")
         traceback.print_exc()
 
@@ -355,7 +356,7 @@ class ScheduledResponse:
             print(f"[{self.request.address[0]} - ERROR] Unexpected server error:")
             traceback.print_exc()
             try:
-                generated_response = self.error_routes[500](self.request,f"Unexpected Exception: {exception.__class__.__name__}")
+                generated_response = self.error_routes[500](self.request,f"Unexpected exception: {exception.__class__.__name__}")
             except Exception:
                 print(f"[{self.request.address[0]} - ERROR] Releasing process, unexpected error-route error:")
                 traceback.print_exc()
