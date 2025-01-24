@@ -1,8 +1,8 @@
 [project]
 name = "outside-framework"
-version = "1.5.7"
+version = "1.5.8"
 authors = [
-    { name = "toni08", email = "hello1502.channel@gmail.com" }
+    { name = "toni08bit", email = "hello1502.channel@gmail.com" }
 ]
 description = "An easy-to-use python web framework. Inspired by Flask."
 readme = "README.md"
