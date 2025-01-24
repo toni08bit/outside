@@ -260,7 +260,7 @@ def process_request(activity_queue,connected_socket,address,config,route_names,r
             response_data = (response_data + b"\r\n" + response_class.content)
             send(response_data)
 
-        print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str(round((time.perf_counter() - start_time) / 1000 / 1000) * 1000)}ms.")
+        print(f"[{debug_name} - INFO] Code {str(response_class.status_code)} in {str(round((time.perf_counter() - start_time) * 1000))}ms.")
         if (isinstance(responding_route,protocol_websocket.WebSocket)):
             print(f"[{debug_name} - INFO] Handshake complete.")
             try:
